@@ -87,10 +87,6 @@ export const leaveTypeEnum = pgEnum("leave_type", ["annual", "sick", "emergency"
 
 export const leaveStatusEnum = pgEnum("leave_status", ["pending", "approved_by_direct", "approved_by_section", "approved_by_hr", "approved", "rejected", "cancelled"]);
 
-export const serviceTypeEnum = pgEnum("service_type", ["maintenance", "technical", "administrative", "it_support", "cleaning", "stationery", "other"]);
-
-export const serviceStatusEnum = pgEnum("service_status", ["pending", "assigned", "in_progress", "completed", "verified", "rejected", "cancelled"]);
-
 export const permissions = pgTable("permissions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   key: text("key").notNull().unique(),
@@ -164,7 +160,6 @@ export const employees = pgTable("employees", {
   signatureUrl: text("signature_url"),
   canAccessCorrespondence: boolean("can_access_correspondence").default(true),
   canAccessLeaveRequests: boolean("can_access_leave_requests").default(true),
-  canAccessServiceRequests: boolean("can_access_service_requests").default(true),
   canReceiveExternalIncoming: boolean("can_receive_external_incoming").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -411,31 +406,6 @@ export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
   approvedBy: one(employees, { fields: [leaveRequests.approvedById], references: [employees.id], relationName: "leaveApprover" }),
 }));
 
-export const serviceRequests = pgTable("service_requests", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  requestNumber: text("request_number").notNull().unique(),
-  serviceType: serviceTypeEnum("service_type").notNull(),
-  title: text("title").notNull(),
-  description: text("description"),
-  departmentId: integer("department_id"),
-  requestedById: integer("requested_by_id"),
-  assignedToId: integer("assigned_to_id"),
-  assignedDepartmentId: integer("assigned_department_id"),
-  priority: priorityEnum("priority").default("medium"),
-  status: serviceStatusEnum("status").default("pending"),
-  location: text("location"),
-  notes: text("notes"),
-  completionNotes: text("completion_notes"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const serviceRequestsRelations = relations(serviceRequests, ({ one }) => ({
-  department: one(departments, { fields: [serviceRequests.departmentId], references: [departments.id] }),
-  requestedBy: one(employees, { fields: [serviceRequests.requestedById], references: [employees.id], relationName: "serviceRequester" }),
-  assignedTo: one(employees, { fields: [serviceRequests.assignedToId], references: [employees.id], relationName: "serviceAssignee" }),
-}));
-
 export const notificationTargetEnum = pgEnum("notification_target", [
   "all",
   "admin",
@@ -501,64 +471,61 @@ export const flowTemplateGroupsRelations = relations(flowTemplateGroups, ({ one 
   flowTemplate: one(flowTemplates, { fields: [flowTemplateGroups.flowTemplateId], references: [flowTemplates.id] }),
 }));
 
-export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true } as any);
-export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true, createdAt: true } as any);
-export const insertCorrespondenceSchema = createInsertSchema(correspondence).omit({ id: true, createdAt: true, updatedAt: true } as any);
-export const insertCorrespondenceAssignmentSchema = createInsertSchema(correspondenceAssignments).omit({ id: true, createdAt: true } as any);
-export const insertCorrespondenceCCSchema = createInsertSchema(correspondenceCCs).omit({ id: true, createdAt: true } as any);
-export const insertCorrespondenceAttachmentSchema = createInsertSchema(correspondenceAttachments).omit({ id: true, createdAt: true } as any);
-export const insertExternalEntitySchema = createInsertSchema(externalEntities).omit({ id: true, createdAt: true } as any);
-export const insertExternalCorrespondenceCCSchema = createInsertSchema(externalCorrespondenceCCs).omit({ id: true, createdAt: true } as any);
-export const insertAuditLogSchema = createInsertSchema(auditLog).omit({ id: true, createdAt: true } as any);
-export const insertPasswordResetRequestSchema = createInsertSchema(passwordResetRequests).omit({ id: true, createdAt: true } as any);
-export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({ id: true, updatedAt: true } as any);
-export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({ id: true, createdAt: true, updatedAt: true } as any);
-export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({ id: true, createdAt: true, updatedAt: true } as any);
-export const insertPermissionSchema = createInsertSchema(permissions).omit({ id: true } as any);
-export const insertUserPermissionSchema = createInsertSchema(userPermissions).omit({ id: true, grantedAt: true } as any);
-export const insertWorkflowEventSchema = createInsertSchema(workflowEvents).omit({ id: true, createdAt: true } as any);
-export const insertSystemNotificationSchema = createInsertSchema(systemNotifications).omit({ id: true, createdAt: true } as any);
-export const insertNotificationRecipientSchema = createInsertSchema(notificationRecipients).omit({ id: true, createdAt: true } as any);
-export const insertCorrespondenceContributionSchema = createInsertSchema(correspondenceContributions).omit({ id: true, createdAt: true } as any);
+export const insertDepartmentSchema = createInsertSchema(departments);
+export const insertEmployeeSchema = createInsertSchema(employees);
+export const insertCorrespondenceSchema = createInsertSchema(correspondence);
+export const insertCorrespondenceAssignmentSchema = createInsertSchema(correspondenceAssignments);
+export const insertCorrespondenceCCSchema = createInsertSchema(correspondenceCCs);
+export const insertCorrespondenceAttachmentSchema = createInsertSchema(correspondenceAttachments);
+export const insertExternalEntitySchema = createInsertSchema(externalEntities);
+export const insertExternalCorrespondenceCCSchema = createInsertSchema(externalCorrespondenceCCs);
+export const insertAuditLogSchema = createInsertSchema(auditLog);
+export const insertPasswordResetRequestSchema = createInsertSchema(passwordResetRequests);
+export const insertSystemSettingSchema = createInsertSchema(systemSettings);
+export const insertLeaveRequestSchema = createInsertSchema(leaveRequests);
+export const insertPermissionSchema = createInsertSchema(permissions);
+export const insertUserPermissionSchema = createInsertSchema(userPermissions);
+export const insertWorkflowEventSchema = createInsertSchema(workflowEvents);
+export const insertSystemNotificationSchema = createInsertSchema(systemNotifications);
+export const insertNotificationRecipientSchema = createInsertSchema(notificationRecipients);
+export const insertCorrespondenceContributionSchema = createInsertSchema(correspondenceContributions);
 export type CorrespondenceContribution = typeof correspondenceContributions.$inferSelect;
-export type InsertCorrespondenceContribution = z.infer<typeof insertCorrespondenceContributionSchema>;
+export type InsertCorrespondenceContribution = typeof correspondenceContributions.$inferInsert;
 
 export type Department = typeof departments.$inferSelect;
-export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
+export type InsertDepartment = typeof departments.$inferInsert;
 export type Employee = typeof employees.$inferSelect;
-export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
+export type InsertEmployee = typeof employees.$inferInsert;
 export type Correspondence = typeof correspondence.$inferSelect;
-export type InsertCorrespondence = z.infer<typeof insertCorrespondenceSchema>;
+export type InsertCorrespondence = typeof correspondence.$inferInsert;
 export type CorrespondenceAssignment = typeof correspondenceAssignments.$inferSelect;
-export type InsertCorrespondenceAssignment = z.infer<typeof insertCorrespondenceAssignmentSchema>;
+export type InsertCorrespondenceAssignment = typeof correspondenceAssignments.$inferInsert;
 export type CorrespondenceCC = typeof correspondenceCCs.$inferSelect;
-export type InsertCorrespondenceCC = z.infer<typeof insertCorrespondenceCCSchema>;
+export type InsertCorrespondenceCC = typeof correspondenceCCs.$inferInsert;
 export type CorrespondenceAttachment = typeof correspondenceAttachments.$inferSelect;
-export type InsertCorrespondenceAttachment = z.infer<typeof insertCorrespondenceAttachmentSchema>;
+export type InsertCorrespondenceAttachment = typeof correspondenceAttachments.$inferInsert;
 export type AuditLog = typeof auditLog.$inferSelect;
-export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type InsertAuditLog = typeof auditLog.$inferInsert;
 export type LeaveRequest = typeof leaveRequests.$inferSelect;
-export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;
-export type ServiceRequest = typeof serviceRequests.$inferSelect;
-export type InsertServiceRequest = z.infer<typeof insertServiceRequestSchema>;
+export type InsertLeaveRequest = typeof leaveRequests.$inferInsert;
 export type Permission = typeof permissions.$inferSelect;
-export type InsertPermission = z.infer<typeof insertPermissionSchema>;
+export type InsertPermission = typeof permissions.$inferInsert;
 export type UserPermission = typeof userPermissions.$inferSelect;
-export type InsertUserPermission = z.infer<typeof insertUserPermissionSchema>;
+export type InsertUserPermission = typeof userPermissions.$inferInsert;
 export type WorkflowEvent = typeof workflowEvents.$inferSelect;
-export type InsertWorkflowEvent = z.infer<typeof insertWorkflowEventSchema>;
+export type InsertWorkflowEvent = typeof workflowEvents.$inferInsert;
 export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;
-export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
+export type InsertPasswordResetRequest = typeof passwordResetRequests.$inferInsert;
 export type ExternalEntity = typeof externalEntities.$inferSelect;
-export type InsertExternalEntity = z.infer<typeof insertExternalEntitySchema>;
+export type InsertExternalEntity = typeof externalEntities.$inferInsert;
 export type ExternalCorrespondenceCC = typeof externalCorrespondenceCCs.$inferSelect;
-export type InsertExternalCorrespondenceCC = z.infer<typeof insertExternalCorrespondenceCCSchema>;
+export type InsertExternalCorrespondenceCC = typeof externalCorrespondenceCCs.$inferInsert;
 export type SystemSetting = typeof systemSettings.$inferSelect;
-export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
+export type InsertSystemSetting = typeof systemSettings.$inferInsert;
 export type SystemNotification = typeof systemNotifications.$inferSelect;
-export type InsertSystemNotification = z.infer<typeof insertSystemNotificationSchema>;
+export type InsertSystemNotification = typeof systemNotifications.$inferInsert;
 export type NotificationRecipient = typeof notificationRecipients.$inferSelect;
-export type InsertNotificationRecipient = z.infer<typeof insertNotificationRecipientSchema>;
+export type InsertNotificationRecipient = typeof notificationRecipients.$inferInsert;
 
 export const correspondenceReadStatus = pgTable("correspondence_read_status", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -572,9 +539,9 @@ export const correspondenceReadStatusRelations = relations(correspondenceReadSta
   employee: one(employees, { fields: [correspondenceReadStatus.employeeId], references: [employees.id] }),
 }));
 
-export const insertCorrespondenceReadStatusSchema = createInsertSchema(correspondenceReadStatus).omit({ id: true, readAt: true } as any);
+export const insertCorrespondenceReadStatusSchema = createInsertSchema(correspondenceReadStatus);
 export type CorrespondenceReadStatus = typeof correspondenceReadStatus.$inferSelect;
-export type InsertCorrespondenceReadStatus = z.infer<typeof insertCorrespondenceReadStatusSchema>;
+export type InsertCorrespondenceReadStatus = typeof correspondenceReadStatus.$inferInsert;
 
 export const deletionRequestStatusEnum = pgEnum("deletion_request_status", [
   "pending",
@@ -601,9 +568,9 @@ export const deletionRequestsRelations = relations(deletionRequests, ({ one }) =
   processedBy: one(employees, { fields: [deletionRequests.processedById], references: [employees.id], relationName: "deletionProcessor" }),
 }));
 
-export const insertDeletionRequestSchema = createInsertSchema(deletionRequests).omit({ id: true, createdAt: true } as any);
+export const insertDeletionRequestSchema = createInsertSchema(deletionRequests);
 export type DeletionRequest = typeof deletionRequests.$inferSelect;
-export type InsertDeletionRequest = z.infer<typeof insertDeletionRequestSchema>;
+export type InsertDeletionRequest = typeof deletionRequests.$inferInsert;
 
 export const correspondenceFollowups = pgTable("correspondence_followups", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -618,13 +585,13 @@ export const correspondenceFollowupsRelations = relations(correspondenceFollowup
   employee: one(employees, { fields: [correspondenceFollowups.employeeId], references: [employees.id] }),
 }));
 
-export const insertCorrespondenceFollowupSchema = createInsertSchema(correspondenceFollowups).omit({ id: true, createdAt: true } as any);
+export const insertCorrespondenceFollowupSchema = createInsertSchema(correspondenceFollowups);
 export type CorrespondenceFollowup = typeof correspondenceFollowups.$inferSelect;
-export type InsertCorrespondenceFollowup = z.infer<typeof insertCorrespondenceFollowupSchema>;
+export type InsertCorrespondenceFollowup = typeof correspondenceFollowups.$inferInsert;
 
-export const insertFlowTemplateSchema = createInsertSchema(flowTemplates).omit({ id: true, createdAt: true } as any);
-export const insertFlowTemplateGroupSchema = createInsertSchema(flowTemplateGroups).omit({ id: true, createdAt: true } as any);
+export const insertFlowTemplateSchema = createInsertSchema(flowTemplates);
+export const insertFlowTemplateGroupSchema = createInsertSchema(flowTemplateGroups);
 export type FlowTemplate = typeof flowTemplates.$inferSelect;
-export type InsertFlowTemplate = z.infer<typeof insertFlowTemplateSchema>;
+export type InsertFlowTemplate = typeof flowTemplates.$inferInsert;
 export type FlowTemplateGroup = typeof flowTemplateGroups.$inferSelect;
-export type InsertFlowTemplateGroup = z.infer<typeof insertFlowTemplateGroupSchema>;
+export type InsertFlowTemplateGroup = typeof flowTemplateGroups.$inferInsert;

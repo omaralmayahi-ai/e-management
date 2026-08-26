@@ -9,7 +9,7 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE correspondence_ccs ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE`);
     await db.execute(sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_access_correspondence BOOLEAN DEFAULT TRUE`);
     await db.execute(sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_access_leave_requests BOOLEAN DEFAULT TRUE`);
-    await db.execute(sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_access_service_requests BOOLEAN DEFAULT TRUE`);
+    await db.execute(sql`DROP TABLE IF EXISTS service_requests`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS correspondence_counters (
         id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
@@ -55,6 +55,38 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE correspondence ADD COLUMN IF NOT EXISTS central_mail_assigned_by_id INTEGER`);
   } catch (e) {
     console.log("Migration check completed");
+  }
+
+  // Ensure system admin username and password are set to admin / admin123
+  try {
+    const adminPasswordHash = bcrypt.hashSync("admin123", 10);
+    const existingAdmin = await db.select().from(employees).where(sql`role = 'admin' OR username = 'admin'`).limit(1);
+    if (existingAdmin && existingAdmin.length > 0) {
+      await db.update(employees)
+        .set({
+          username: "admin",
+          passwordHash: adminPasswordHash,
+          role: "admin",
+          isActive: true,
+          mustChangePassword: false,
+        })
+        .where(sql`id = ${existingAdmin[0].id}`);
+      console.log("Admin credentials updated to admin / admin123");
+    } else {
+      await db.insert(employees).values({
+        username: "admin",
+        passwordHash: adminPasswordHash,
+        fullName: "مدير النظام",
+        role: "admin",
+        companyNumber: "0001",
+        landlinePhone: "0000000",
+        mustChangePassword: false,
+        isActive: true,
+      });
+      console.log("Admin account created with admin / admin123");
+    }
+  } catch (err) {
+    console.warn("Could not synchronize admin credentials:", err);
   }
 }
 
@@ -114,7 +146,7 @@ export async function seedDatabase() {
   await insertDept({ name: "قسم العقود", nameEn: "Contracts Section", level: "section", parentId: contractsDir.id, code: "CNT-1" });
   await insertDept({ name: "قسم المشتريات", nameEn: "Procurement Section", level: "section", parentId: contractsDir.id, code: "CNT-2" });
 
-  const adminPasswordHash = bcrypt.hashSync("admin1989", 10);
+  const adminPasswordHash = bcrypt.hashSync("admin123", 10);
   await db.insert(employees).values({
     username: "admin",
     passwordHash: adminPasswordHash,
@@ -122,7 +154,7 @@ export async function seedDatabase() {
     role: "admin",
     companyNumber: "0001",
     landlinePhone: "0000000",
-    mustChangePassword: true,
+    mustChangePassword: false,
   });
 
   await db.insert(systemSettings).values([

@@ -165,6 +165,263 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/* THEMES */
+
+/* 1. أحمر داكن / خمري ملكي (Crimson Burgundy #881337 & #E11D48) */
+[data-theme="crimson"],
+[data-theme="burgundy"],
+[data-theme="red"] {
+  --primary: 344 75% 30%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 344 75% 30%;
+  --sidebar-primary: 344 75% 30%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 344 75% 30%;
+  --accent: 349 89% 95%;
+  --accent-foreground: 344 75% 25%;
+  --chart-1: 344 75% 30%;
+  --chart-2: 349 89% 60%;
+  --chart-3: 160 70% 36%;
+  --chart-4: 38 92% 44%;
+  --chart-5: 222 75% 28%;
+}
+
+.dark[data-theme="crimson"],
+.dark [data-theme="crimson"],
+[data-theme="crimson"].dark,
+.dark[data-theme="burgundy"],
+.dark [data-theme="burgundy"],
+[data-theme="burgundy"].dark,
+.dark[data-theme="red"],
+.dark [data-theme="red"],
+[data-theme="red"].dark {
+  --primary: 349 89% 55%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 349 89% 55%;
+  --sidebar-primary: 349 89% 55%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 349 89% 55%;
+  --accent: 344 75% 15%;
+  --accent-foreground: 349 89% 90%;
+  --chart-1: 349 89% 60%;
+  --chart-2: 344 75% 45%;
+}
+
+/* 2. أزرق ملكي (Royal Blue & Gold #1E3A8A) */
+[data-theme="royal-navy"],
+[data-theme="royal-blue"],
+[data-theme="navy"] {
+  --primary: 222 75% 28%;
+  --primary-foreground: 222 75% 98%;
+  --ring: 222 75% 28%;
+  --sidebar-primary: 222 75% 28%;
+  --sidebar-primary-foreground: 222 75% 98%;
+  --sidebar-ring: 222 75% 28%;
+  --accent: 38 92% 92%;
+  --accent-foreground: 38 92% 20%;
+  --chart-1: 222 75% 28%;
+  --chart-2: 38 92% 44%;
+  --chart-3: 201 80% 40%;
+  --chart-4: 160 70% 36%;
+  --chart-5: 0 75% 45%;
+}
+
+.dark[data-theme="royal-navy"],
+.dark [data-theme="royal-navy"],
+[data-theme="royal-navy"].dark,
+.dark[data-theme="royal-blue"],
+.dark [data-theme="royal-blue"],
+[data-theme="royal-blue"].dark,
+.dark[data-theme="navy"],
+.dark [data-theme="navy"],
+[data-theme="navy"].dark {
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 75% 10%;
+  --ring: 217 91% 60%;
+  --sidebar-primary: 217 91% 60%;
+  --sidebar-primary-foreground: 222 75% 10%;
+  --sidebar-ring: 217 91% 60%;
+  --accent: 38 92% 16%;
+  --accent-foreground: 38 92% 88%;
+  --chart-1: 217 91% 65%;
+  --chart-2: 38 92% 58%;
+}
+
+/* 3. أخضر زمردي (Emerald Forest & Sage #065F46) */
+[data-theme="emerald"],
+[data-theme="green"] {
+  --primary: 160 84% 28%;
+  --primary-foreground: 160 84% 98%;
+  --ring: 160 84% 28%;
+  --sidebar-primary: 160 84% 28%;
+  --sidebar-primary-foreground: 160 84% 98%;
+  --sidebar-ring: 160 84% 28%;
+  --accent: 160 60% 93%;
+  --accent-foreground: 160 84% 20%;
+  --chart-1: 160 84% 28%;
+  --chart-2: 172 75% 36%;
+}
+
+.dark[data-theme="emerald"],
+.dark [data-theme="emerald"],
+[data-theme="emerald"].dark,
+.dark[data-theme="green"],
+.dark [data-theme="green"],
+[data-theme="green"].dark {
+  --primary: 158 75% 42%;
+  --primary-foreground: 160 84% 98%;
+  --ring: 158 75% 42%;
+  --sidebar-primary: 158 75% 42%;
+  --sidebar-primary-foreground: 160 84% 98%;
+  --sidebar-ring: 158 75% 42%;
+  --accent: 160 84% 14%;
+  --accent-foreground: 160 60% 90%;
+  --chart-1: 158 75% 54%;
+  --chart-2: 172 75% 56%;
+}
+
+/* 4. بنفسجي غامق (Deep Purple & Violet #581C87) */
+[data-theme="deep-purple"],
+[data-theme="purple"],
+[data-theme="indigo"] {
+  --primary: 272 65% 32%;
+  --primary-foreground: 272 65% 98%;
+  --ring: 272 65% 32%;
+  --sidebar-primary: 272 65% 32%;
+  --sidebar-primary-foreground: 272 65% 98%;
+  --sidebar-ring: 272 65% 32%;
+  --accent: 272 50% 94%;
+  --accent-foreground: 272 65% 25%;
+  --chart-1: 272 65% 32%;
+  --chart-2: 290 70% 46%;
+}
+
+.dark[data-theme="deep-purple"],
+.dark [data-theme="deep-purple"],
+[data-theme="deep-purple"].dark,
+.dark[data-theme="purple"],
+.dark [data-theme="purple"],
+[data-theme="purple"].dark,
+.dark[data-theme="indigo"],
+.dark [data-theme="indigo"],
+[data-theme="indigo"].dark {
+  --primary: 270 80% 68%;
+  --primary-foreground: 272 65% 10%;
+  --ring: 270 80% 68%;
+  --sidebar-primary: 270 80% 68%;
+  --sidebar-primary-foreground: 272 65% 10%;
+  --sidebar-ring: 270 80% 68%;
+  --accent: 272 65% 16%;
+  --accent-foreground: 270 80% 90%;
+  --chart-1: 270 80% 70%;
+  --chart-2: 290 70% 68%;
+}
+
+/* 5. رمادي احترافي (Professional Slate / Charcoal #334155) */
+[data-theme="charcoal"],
+[data-theme="slate"],
+[data-theme="gray"] {
+  --primary: 215 28% 27%;
+  --primary-foreground: 215 28% 98%;
+  --ring: 215 28% 27%;
+  --sidebar-primary: 215 28% 27%;
+  --sidebar-primary-foreground: 215 28% 98%;
+  --sidebar-ring: 215 28% 27%;
+  --accent: 215 20% 92%;
+  --accent-foreground: 215 28% 20%;
+  --chart-1: 215 28% 27%;
+  --chart-2: 210 20% 45%;
+}
+
+.dark[data-theme="charcoal"],
+.dark [data-theme="charcoal"],
+[data-theme="charcoal"].dark,
+.dark[data-theme="slate"],
+.dark [data-theme="slate"],
+[data-theme="slate"].dark,
+.dark[data-theme="gray"],
+.dark [data-theme="gray"],
+[data-theme="gray"].dark {
+  --primary: 215 20% 65%;
+  --primary-foreground: 215 28% 10%;
+  --ring: 215 20% 65%;
+  --sidebar-primary: 215 20% 65%;
+  --sidebar-primary-foreground: 215 28% 10%;
+  --sidebar-ring: 215 20% 65%;
+  --accent: 215 28% 15%;
+  --accent-foreground: 215 20% 88%;
+  --chart-1: 215 20% 70%;
+  --chart-2: 210 20% 60%;
+}
+
+/* 6. برتقالي دافئ (Warm Amber / Orange #C2410C) */
+[data-theme="warm-orange"],
+[data-theme="warm"],
+[data-theme="orange"] {
+  --primary: 24 78% 42%;
+  --primary-foreground: 24 78% 98%;
+  --ring: 24 78% 42%;
+  --sidebar-primary: 24 78% 42%;
+  --sidebar-primary-foreground: 24 78% 98%;
+  --sidebar-ring: 24 78% 42%;
+  --accent: 24 60% 94%;
+  --accent-foreground: 24 78% 22%;
+  --chart-1: 24 78% 42%;
+  --chart-2: 16 72% 40%;
+}
+
+.dark[data-theme="warm-orange"],
+.dark [data-theme="warm-orange"],
+[data-theme="warm-orange"].dark,
+.dark[data-theme="warm"],
+.dark [data-theme="warm"],
+[data-theme="warm"].dark {
+  --primary: 24 78% 50%;
+  --primary-foreground: 24 78% 98%;
+  --ring: 24 78% 50%;
+  --sidebar-primary: 24 78% 50%;
+  --sidebar-primary-foreground: 24 78% 98%;
+  --sidebar-ring: 24 78% 50%;
+  --accent: 24 78% 16%;
+  --accent-foreground: 24 78% 90%;
+  --chart-1: 24 78% 58%;
+  --chart-2: 16 72% 56%;
+}
+
+/* 7. أزرق أردوازي (Azure Tech #0369A1) */
+[data-theme="azure"],
+[data-theme="blue"] {
+  --primary: 201 96% 40%;
+  --primary-foreground: 201 96% 98%;
+  --ring: 201 96% 40%;
+  --sidebar-primary: 201 96% 40%;
+  --sidebar-primary-foreground: 201 96% 98%;
+  --sidebar-ring: 201 96% 40%;
+  --accent: 201 60% 94%;
+  --accent-foreground: 201 96% 25%;
+  --chart-1: 201 96% 40%;
+  --chart-2: 185 85% 38%;
+}
+
+.dark[data-theme="azure"],
+.dark [data-theme="azure"],
+[data-theme="azure"].dark,
+.dark[data-theme="blue"],
+.dark [data-theme="blue"],
+[data-theme="blue"].dark {
+  --primary: 201 96% 50%;
+  --primary-foreground: 201 96% 98%;
+  --ring: 201 96% 50%;
+  --sidebar-primary: 201 96% 50%;
+  --sidebar-primary-foreground: 201 96% 98%;
+  --sidebar-ring: 201 96% 50%;
+  --accent: 201 96% 16%;
+  --accent-foreground: 201 96% 90%;
+  --chart-1: 201 96% 62%;
+  --chart-2: 185 85% 62%;
+}
+
+/* 8. أخضر مائي (Teal Cyan) */
 [data-theme="teal"] {
   --primary: 178 72% 38%;
   --primary-foreground: 178 72% 98%;
@@ -176,51 +433,8 @@
   --chart-2: 195 68% 38%;
 }
 
-[data-theme="green"] {
-  --primary: 152 62% 36%;
-  --primary-foreground: 152 62% 98%;
-  --ring: 152 62% 36%;
-  --sidebar-primary: 152 62% 36%;
-  --sidebar-primary-foreground: 152 62% 98%;
-  --sidebar-ring: 152 62% 36%;
-  --chart-1: 152 62% 32%;
-  --chart-2: 168 58% 36%;
-}
-
-[data-theme="purple"] {
-  --primary: 262 68% 48%;
-  --primary-foreground: 262 68% 98%;
-  --ring: 262 68% 48%;
-  --sidebar-primary: 262 68% 48%;
-  --sidebar-primary-foreground: 262 68% 98%;
-  --sidebar-ring: 262 68% 48%;
-  --chart-1: 262 68% 44%;
-  --chart-2: 280 60% 48%;
-}
-
-[data-theme="warm"] {
-  --primary: 24 78% 42%;
-  --primary-foreground: 24 78% 98%;
-  --ring: 24 78% 42%;
-  --sidebar-primary: 24 78% 42%;
-  --sidebar-primary-foreground: 24 78% 98%;
-  --sidebar-ring: 24 78% 42%;
-  --chart-1: 24 78% 38%;
-  --chart-2: 16 72% 40%;
-}
-
 .dark[data-theme="teal"],
-.dark [data-theme="teal"] {
-  --primary: 178 72% 48%;
-  --primary-foreground: 178 72% 98%;
-  --ring: 178 72% 48%;
-  --sidebar-primary: 178 72% 48%;
-  --sidebar-primary-foreground: 178 72% 98%;
-  --sidebar-ring: 178 72% 48%;
-  --chart-1: 178 72% 58%;
-  --chart-2: 195 68% 60%;
-}
-
+.dark [data-theme="teal"],
 [data-theme="teal"].dark {
   --primary: 178 72% 48%;
   --primary-foreground: 178 72% 98%;
@@ -232,74 +446,110 @@
   --chart-2: 195 68% 60%;
 }
 
-.dark[data-theme="green"],
-.dark [data-theme="green"] {
-  --primary: 152 62% 44%;
-  --primary-foreground: 152 62% 98%;
-  --ring: 152 62% 44%;
-  --sidebar-primary: 152 62% 44%;
-  --sidebar-primary-foreground: 152 62% 98%;
-  --sidebar-ring: 152 62% 44%;
-  --chart-1: 152 62% 56%;
-  --chart-2: 168 58% 58%;
+/* FONT SELECTION RULES */
+body, :root {
+  font-family: 'Cairo', 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-[data-theme="green"].dark {
-  --primary: 152 62% 44%;
-  --primary-foreground: 152 62% 98%;
-  --ring: 152 62% 44%;
-  --sidebar-primary: 152 62% 44%;
-  --sidebar-primary-foreground: 152 62% 98%;
-  --sidebar-ring: 152 62% 44%;
-  --chart-1: 152 62% 56%;
-  --chart-2: 168 58% 58%;
+[data-font="cairo"], html[data-font="cairo"] body {
+  font-family: 'Cairo', sans-serif !important;
 }
 
-.dark[data-theme="purple"],
-.dark [data-theme="purple"] {
-  --primary: 262 68% 58%;
-  --primary-foreground: 262 68% 98%;
-  --ring: 262 68% 58%;
-  --sidebar-primary: 262 68% 58%;
-  --sidebar-primary-foreground: 262 68% 98%;
-  --sidebar-ring: 262 68% 58%;
-  --chart-1: 262 68% 64%;
-  --chart-2: 280 60% 62%;
+[data-font="ibm-plex"], html[data-font="ibm-plex"] body {
+  font-family: 'IBM Plex Sans Arabic', sans-serif !important;
 }
 
-[data-theme="purple"].dark {
-  --primary: 262 68% 58%;
-  --primary-foreground: 262 68% 98%;
-  --ring: 262 68% 58%;
-  --sidebar-primary: 262 68% 58%;
-  --sidebar-primary-foreground: 262 68% 98%;
-  --sidebar-ring: 262 68% 58%;
-  --chart-1: 262 68% 64%;
-  --chart-2: 280 60% 62%;
+[data-font="tajawal"], html[data-font="tajawal"] body {
+  font-family: 'Tajawal', sans-serif !important;
 }
 
-.dark[data-theme="warm"],
-.dark [data-theme="warm"] {
-  --primary: 24 78% 50%;
-  --primary-foreground: 24 78% 98%;
-  --ring: 24 78% 50%;
-  --sidebar-primary: 24 78% 50%;
-  --sidebar-primary-foreground: 24 78% 98%;
-  --sidebar-ring: 24 78% 50%;
-  --chart-1: 24 78% 58%;
-  --chart-2: 16 72% 56%;
+[data-font="almarai"], html[data-font="almarai"] body {
+  font-family: 'Almarai', sans-serif !important;
 }
 
-[data-theme="warm"].dark {
-  --primary: 24 78% 50%;
-  --primary-foreground: 24 78% 98%;
-  --ring: 24 78% 50%;
-  --sidebar-primary: 24 78% 50%;
-  --sidebar-primary-foreground: 24 78% 98%;
-  --sidebar-ring: 24 78% 50%;
-  --chart-1: 24 78% 58%;
-  --chart-2: 16 72% 56%;
+[data-font="readex"], html[data-font="readex"] body {
+  font-family: 'Readex Pro', sans-serif !important;
 }
+
+[data-font="kufi"], html[data-font="kufi"] body {
+  font-family: 'Noto Kufi Arabic', sans-serif !important;
+}
+
+/* SIDEBAR STYLES */
+/* Primary / Colored Sidebar (Matches the uploaded mockup with #881337 or primary color) */
+[data-sidebar-style="primary"] [data-sidebar="sidebar"],
+[data-sidebar-style="colored"] [data-sidebar="sidebar"] {
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  border-color: hsl(var(--primary) / 0.85) !important;
+}
+
+[data-sidebar-style="primary"] [data-sidebar="sidebar"] .text-muted-foreground,
+[data-sidebar-style="colored"] [data-sidebar="sidebar"] .text-muted-foreground {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+[data-sidebar-style="primary"] [data-sidebar="sidebar"] a,
+[data-sidebar-style="colored"] [data-sidebar="sidebar"] a,
+[data-sidebar-style="primary"] [data-sidebar="sidebar"] button,
+[data-sidebar-style="colored"] [data-sidebar="sidebar"] button,
+[data-sidebar-style="primary"] [data-sidebar="sidebar"] [data-testid="text-sidebar-copyright"],
+[data-sidebar-style="colored"] [data-sidebar="sidebar"] [data-testid="text-sidebar-copyright"] {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+[data-sidebar-style="primary"] [data-sidebar="sidebar"] a:hover,
+[data-sidebar-style="colored"] [data-sidebar="sidebar"] a:hover {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+}
+
+[data-sidebar-style="primary"] [data-sidebar="sidebar"] a[data-active="true"],
+[data-sidebar-style="colored"] [data-sidebar="sidebar"] a[data-active="true"] {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* Dark Slate Sidebar */
+[data-sidebar-style="dark"] [data-sidebar="sidebar"] {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #1e293b !important;
+}
+
+[data-sidebar-style="dark"] [data-sidebar="sidebar"] .text-muted-foreground {
+  color: #94a3b8 !important;
+}
+
+[data-sidebar-style="dark"] [data-sidebar="sidebar"] a {
+  color: #cbd5e1 !important;
+}
+
+[data-sidebar-style="dark"] [data-sidebar="sidebar"] a:hover {
+  background-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+[data-sidebar-style="dark"] [data-sidebar="sidebar"] a[data-active="true"] {
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  font-weight: 600 !important;
+}
+
+/* Clean Light Sidebar */
+[data-sidebar-style="light"] [data-sidebar="sidebar"] {
+  background-color: hsl(var(--sidebar)) !important;
+  color: hsl(var(--sidebar-foreground)) !important;
+}
+
+/* RADIUS STYLES */
+[data-radius="sm"] { --radius: 0.25rem; }
+[data-radius="md"] { --radius: 0.5rem; }
+[data-radius="lg"] { --radius: 0.75rem; }
+[data-radius="xl"] { --radius: 1rem; }
+
 
 @layer base {
   * {

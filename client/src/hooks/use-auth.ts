@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, authFetch } from "@/lib/queryClient";
 
 export interface AuthUser {
   id: number;
@@ -13,13 +13,10 @@ export interface AuthUser {
   mustChangePassword?: boolean;
   canAccessCorrespondence?: boolean;
   canAccessLeaveRequests?: boolean;
-  canAccessServiceRequests?: boolean;
 }
 
 async function fetchUser(): Promise<AuthUser | null> {
-  const response = await fetch("/api/auth/user", {
-    credentials: "include",
-  });
+  const response = await authFetch("/api/auth/user");
 
   if (response.status === 401) {
     return null;
@@ -46,7 +43,11 @@ export function useAuth() {
       const res = await apiRequest("POST", "/api/auth/login", { username, password });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data?.token) {
+        localStorage.setItem("auth_token", data.token);
+      }
+      queryClient.setQueryData(["/api/auth/user"], data);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });
@@ -56,6 +57,7 @@ export function useAuth() {
       await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: () => {
+      localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/auth/user"], null);
       queryClient.clear();
     },
@@ -66,7 +68,10 @@ export function useAuth() {
       const res = await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data?.token) {
+        localStorage.setItem("auth_token", data.token);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });

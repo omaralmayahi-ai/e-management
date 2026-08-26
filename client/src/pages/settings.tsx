@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, authFetch } from "@/lib/queryClient";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -61,7 +61,23 @@ import {
   Ban,
   RotateCcw,
   ShieldAlert,
+  Type,
+  Sliders,
+  Paintbrush,
+  Check,
+  Layers,
+  Sparkles,
+  Columns,
+  Square,
+  CircleDot,
 } from "lucide-react";
+import {
+  THEME_PRESETS,
+  FONT_OPTIONS,
+  applyAppearanceToDOM,
+  type ThemeConfig,
+  type ThemePreset,
+} from "@/lib/theme-utils";
 
 function printTable({ title, headers, rows, filters }: { title: string; headers: string[]; rows: string[][]; filters?: string[] }) {
   const win = window.open("", "_blank");
@@ -101,6 +117,7 @@ function GeneralSettings() {
   const [extEndNumber, setExtEndNumber] = useState("");
   const [initialized, setInitialized] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [logoTimestamp, setLogoTimestamp] = useState(Date.now());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -116,12 +133,30 @@ function GeneralSettings() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("PUT", "/api/settings", { orgName, systemName, copyrightOwner, externalOutgoingStartNumber: extStartNumber, externalOutgoingEndNumber: extEndNumber });
+      if (extStartNumber && isNaN(Number(extStartNumber))) {
+        throw new Error("رقم بداية الصادر الخارجي يجب أن يكون رقماً صحيحاً");
+      }
+      if (extEndNumber && isNaN(Number(extEndNumber))) {
+        throw new Error("رقم نهاية الصادر الخارجي يجب أن يكون رقماً صحيحاً");
+      }
+      if (extStartNumber && extEndNumber && Number(extEndNumber) < Number(extStartNumber)) {
+        throw new Error("رقم النهاية يجب أن يكون أكبر من أو يساوي رقم البداية");
+      }
+      await apiRequest("PUT", "/api/settings", {
+        orgName: orgName.trim(),
+        systemName: systemName.trim(),
+        copyrightOwner: copyrightOwner.trim(),
+        externalOutgoingStartNumber: extStartNumber.trim(),
+        externalOutgoingEndNumber: extEndNumber.trim(),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/settings/public"] });
       toast({ title: "تم الحفظ", description: "تم حفظ الإعدادات بنجاح" });
+    },
+    onError: (err: any) => {
+      toast({ title: "خطأ", description: err.message || "تعذر حفظ الإعدادات", variant: "destructive" });
     },
   });
 
@@ -129,7 +164,7 @@ function GeneralSettings() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      toast({ title: "خطأ", description: "يرجى اختيار ملف صورة فقط", variant: "destructive" });
+      toast({ title: "خطأ", description: "يرجى اختيار ملف صورة فقط (PNG, JPG, SVG, WebP)", variant: "destructive" });
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -140,12 +175,20 @@ function GeneralSettings() {
     try {
       const formData = new FormData();
       formData.append("logo", file);
-      const res = await fetch("/api/settings/logo", { method: "POST", body: formData, credentials: "include" });
-      if (!res.ok) throw new Error("Upload failed");
-      queryClient.invalidateQueries({ queryKey: ["/api/settings/public"] });
+      const res = await authFetch("/api/settings/logo", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "فشل رفع الشعار");
+      }
+      setLogoTimestamp(Date.now());
+      await queryClient.invalidateQueries({ queryKey: ["/api/settings/public"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
       toast({ title: "تم رفع الشعار بنجاح" });
-    } catch {
-      toast({ title: "خطأ في رفع الشعار", variant: "destructive" });
+    } catch (err: any) {
+      toast({ title: "خطأ في رفع الشعار", description: err.message || "حدث خطأ أثناء معالجة الشعار", variant: "destructive" });
     } finally {
       setLogoUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -155,10 +198,12 @@ function GeneralSettings() {
   const handleLogoDelete = async () => {
     try {
       await apiRequest("DELETE", "/api/settings/logo");
-      queryClient.invalidateQueries({ queryKey: ["/api/settings/public"] });
+      setLogoTimestamp(Date.now());
+      await queryClient.invalidateQueries({ queryKey: ["/api/settings/public"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
       toast({ title: "تم حذف الشعار" });
-    } catch {
-      toast({ title: "خطأ في حذف الشعار", variant: "destructive" });
+    } catch (err: any) {
+      toast({ title: "خطأ في حذف الشعار", description: err.message || "حدث خطأ أثناء حذف الشعار", variant: "destructive" });
     }
   };
 
@@ -232,7 +277,7 @@ function GeneralSettings() {
           <div className="flex items-start gap-4">
             <div className="w-20 h-20 rounded-lg border-2 border-dashed flex items-center justify-center bg-muted/30 overflow-hidden shrink-0" data-testid="logo-preview">
               {publicSettings?.logoUrl ? (
-                <img src={publicSettings.logoUrl + "?t=" + Date.now()} alt="شعار النظام" className="w-full h-full object-contain" />
+                <img src={`${publicSettings.logoUrl}?t=${logoTimestamp}`} alt="شعار النظام" className="w-full h-full object-contain" />
               ) : (
                 <ImageIcon className="w-8 h-8 text-muted-foreground/40" />
               )}
@@ -241,7 +286,7 @@ function GeneralSettings() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp,image/gif"
                 className="hidden"
                 onChange={handleLogoUpload}
                 data-testid="input-logo-file"
@@ -272,7 +317,7 @@ function GeneralSettings() {
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">PNG, JPG, SVG أو WebP - حجم أقصى 2MB</p>
+              <p className="text-xs text-muted-foreground">PNG, JPG, SVG, WebP أو GIF - حجم أقصى 2MB</p>
             </div>
           </div>
         </div>
@@ -310,62 +355,808 @@ function GeneralSettings() {
   );
 }
 
-const themePresets = [
-  { id: "blue", name: "أزرق هادئ", primary: "210 82% 42%", desc: "اللون الافتراضي - مهني وهادئ" },
-  { id: "teal", name: "أخضر مائي", primary: "178 72% 38%", desc: "منعش وحديث" },
-  { id: "green", name: "أخضر طبيعي", primary: "152 62% 36%", desc: "مريح للعين وطبيعي" },
-  { id: "purple", name: "بنفسجي أنيق", primary: "262 68% 48%", desc: "أنيق ومميز" },
-  { id: "warm", name: "دافئ", primary: "24 78% 42%", desc: "دافئ وودي" },
-];
-
 function ThemeSettings() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: settings } = useQuery<Record<string, string>>({ queryKey: ["/api/settings"] });
-  const currentTheme = settings?.theme || "blue";
+
+  const savedTheme = settings?.theme || "crimson";
+  const savedFont = settings?.fontFamily || "cairo";
+  const savedSidebar = (settings?.sidebarStyle as any) || "primary";
+  const savedRadius = (settings?.borderRadius as any) || "md";
+  const savedCustomPrimary = settings?.customPrimary || "";
+  const savedCustomAccent = settings?.customAccent || "";
+
+  // Active state for live preview
+  const [activeTab, setActiveTab] = useState<string>("presets");
+  const [previewTheme, setPreviewTheme] = useState<string>(savedTheme);
+  const [previewFont, setPreviewFont] = useState<string>(savedFont);
+  const [previewSidebar, setPreviewSidebar] = useState<"primary" | "dark" | "light">(savedSidebar);
+  const [previewRadius, setPreviewRadius] = useState<"sm" | "md" | "lg" | "xl">(savedRadius);
+  const [customPrimary, setCustomPrimary] = useState<string>(savedCustomPrimary);
+  const [customAccent, setCustomAccent] = useState<string>(savedCustomAccent);
+
+  // Sync with saved settings on initial load
+  useEffect(() => {
+    if (settings) {
+      const t = settings.theme || "crimson";
+      const f = settings.fontFamily || "cairo";
+      const s = (settings.sidebarStyle as any) || "primary";
+      const r = (settings.borderRadius as any) || "md";
+      const cp = settings.customPrimary || "";
+      const ca = settings.customAccent || "";
+
+      setPreviewTheme(t);
+      setPreviewFont(f);
+      setPreviewSidebar(s);
+      setPreviewRadius(r);
+      setCustomPrimary(cp);
+      setCustomAccent(ca);
+
+      applyAppearanceToDOM({
+        theme: t,
+        fontFamily: f,
+        sidebarStyle: s,
+        borderRadius: r,
+        customPrimary: cp || undefined,
+        customAccent: ca || undefined,
+      });
+    }
+  }, [settings]);
+
+  const updateAppearance = (updates: {
+    theme?: string;
+    font?: string;
+    sidebar?: "primary" | "dark" | "light";
+    radius?: "sm" | "md" | "lg" | "xl";
+    primaryHex?: string;
+    accentHex?: string;
+  }) => {
+    const nextTheme = updates.theme !== undefined ? updates.theme : previewTheme;
+    const nextFont = updates.font !== undefined ? updates.font : previewFont;
+    const nextSidebar = updates.sidebar !== undefined ? updates.sidebar : previewSidebar;
+    const nextRadius = updates.radius !== undefined ? updates.radius : previewRadius;
+    const nextPrimary = updates.primaryHex !== undefined ? updates.primaryHex : customPrimary;
+    const nextAccent = updates.accentHex !== undefined ? updates.accentHex : customAccent;
+
+    if (updates.theme !== undefined) setPreviewTheme(nextTheme);
+    if (updates.font !== undefined) setPreviewFont(nextFont);
+    if (updates.sidebar !== undefined) setPreviewSidebar(nextSidebar);
+    if (updates.radius !== undefined) setPreviewRadius(nextRadius);
+    if (updates.primaryHex !== undefined) setCustomPrimary(nextPrimary);
+    if (updates.accentHex !== undefined) setCustomAccent(nextAccent);
+
+    applyAppearanceToDOM({
+      theme: nextTheme,
+      fontFamily: nextFont,
+      sidebarStyle: nextSidebar,
+      borderRadius: nextRadius,
+      customPrimary: nextPrimary || undefined,
+      customAccent: nextAccent || undefined,
+    });
+  };
+
+  const handleSelectPreset = (preset: ThemePreset) => {
+    updateAppearance({
+      theme: preset.id,
+      primaryHex: "",
+      accentHex: "",
+    });
+    toast({
+      title: `معاينة: ${preset.name}`,
+      description: "تم تطبيق الثيم في الشاشة فورياً للمعاينة الحية",
+    });
+  };
+
+  const handleApplyPresetHex = (preset: ThemePreset) => {
+    updateAppearance({
+      theme: preset.id,
+      primaryHex: preset.hexPrimary,
+      accentHex: preset.hexAccent,
+    });
+    toast({
+      title: `تطبيق الهوية المحددة: ${preset.name}`,
+      description: `الأساسي: ${preset.hexPrimary} | الثانوي: ${preset.hexAccent}`,
+    });
+  };
+
+  const handleResetToSaved = () => {
+    setPreviewTheme(savedTheme);
+    setPreviewFont(savedFont);
+    setPreviewSidebar(savedSidebar);
+    setPreviewRadius(savedRadius);
+    setCustomPrimary(savedCustomPrimary);
+    setCustomAccent(savedCustomAccent);
+
+    applyAppearanceToDOM({
+      theme: savedTheme,
+      fontFamily: savedFont,
+      sidebarStyle: savedSidebar,
+      borderRadius: savedRadius,
+      customPrimary: savedCustomPrimary || undefined,
+      customAccent: savedCustomAccent || undefined,
+    });
+
+    toast({
+      title: "تم الاسترجاع",
+      description: "تمت العودة إلى الإعدادات المحفوظة مسبقاً",
+    });
+  };
 
   const saveMutation = useMutation({
-    mutationFn: async (themeId: string) => {
-      await apiRequest("PUT", "/api/settings", { theme: themeId });
+    mutationFn: async () => {
+      await apiRequest("PUT", "/api/settings", {
+        theme: previewTheme,
+        fontFamily: previewFont,
+        sidebarStyle: previewSidebar,
+        borderRadius: previewRadius,
+        customPrimary: customPrimary,
+        customAccent: customAccent,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/settings/public"] });
-      toast({ title: "تم", description: "تم تغيير الثيم بنجاح" });
+      toast({
+        title: "تم الحفظ والاعتماد بنجاح",
+        description: "تم تطبيق الهوية البصرية والخط والألوان لكافة مستخدمي النظام",
+      });
     },
   });
 
+  const isDirty =
+    previewTheme !== savedTheme ||
+    previewFont !== savedFont ||
+    previewSidebar !== savedSidebar ||
+    previewRadius !== savedRadius ||
+    customPrimary !== savedCustomPrimary ||
+    customAccent !== savedCustomAccent;
+
+  const currentPreset = THEME_PRESETS.find((t) => t.id === previewTheme) || THEME_PRESETS[0];
+
   return (
-    <Card className="p-6">
-      <h3 className="font-semibold mb-4 flex items-center gap-2">
-        <Palette className="w-4 h-4 text-primary" />
-        ثيم الألوان
-      </h3>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {themePresets.map((theme) => (
-          <button
-            key={theme.id}
-            onClick={() => saveMutation.mutate(theme.id)}
-            className={`p-4 rounded-lg border-2 text-right transition-all ${
-              currentTheme === theme.id
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/30"
-            }`}
-            data-testid={`button-theme-${theme.id}`}
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <div
-                className="w-8 h-8 rounded-full shrink-0"
-                style={{ backgroundColor: `hsl(${theme.primary})` }}
-              />
-              <span className="font-medium text-sm">{theme.name}</span>
-              {currentTheme === theme.id && <CheckCircle2 className="w-4 h-4 text-primary mr-auto" />}
+    <div className="space-y-6">
+      {/* Top Banner: Status & Action Bar */}
+      <Card className="p-6 border-primary/20 bg-gradient-to-r from-background via-primary/5 to-background shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                <Palette className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-lg text-foreground">تخصيص الهوية البصرية والتصميم الشامل</h3>
+              {isDirty && (
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 animate-pulse">
+                  معاينة حية فورية (تعديلات غير محفوظة)
+                </Badge>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">{theme.desc}</p>
-          </button>
-        ))}
-      </div>
-    </Card>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              يمكنك تخصيص الألوان الأساسية، نمط القوائم الجانبية، أنواع الخطوط العربية، وزوايا العناصر مع معاينة فورية لكامل النظام.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {isDirty && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetToSaved}
+                className="gap-1.5"
+                data-testid="button-reset-theme"
+              >
+                <RotateCcw className="w-4 h-4" />
+                استرجاع المحفوظ
+              </Button>
+            )}
+            <Button
+              size="sm"
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+              className="gap-1.5 shadow-sm font-semibold"
+              data-testid="button-save-theme"
+            >
+              {saveMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )}
+              {isDirty ? "حفظ واعتماد التغييرات للنظام" : "الإعدادات معتمدة حالياً"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Main Configuration Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid grid-cols-2 md:grid-cols-5 h-auto p-1 bg-muted/60 border">
+          <TabsTrigger value="presets" className="gap-1.5 py-2.5 text-xs sm:text-sm font-medium">
+            <Sparkles className="w-4 h-4 text-primary" />
+            السمات الجاهزة
+          </TabsTrigger>
+          <TabsTrigger value="colors" className="gap-1.5 py-2.5 text-xs sm:text-sm font-medium">
+            <Paintbrush className="w-4 h-4 text-primary" />
+            تخصيص الألوان (HEX)
+          </TabsTrigger>
+          <TabsTrigger value="fonts" className="gap-1.5 py-2.5 text-xs sm:text-sm font-medium">
+            <Type className="w-4 h-4 text-primary" />
+            الخطوط العربية
+          </TabsTrigger>
+          <TabsTrigger value="sidebar" className="gap-1.5 py-2.5 text-xs sm:text-sm font-medium">
+            <Columns className="w-4 h-4 text-primary" />
+            القائمة الجانبية
+          </TabsTrigger>
+          <TabsTrigger value="geometry" className="gap-1.5 py-2.5 text-xs sm:text-sm font-medium">
+            <Square className="w-4 h-4 text-primary" />
+            حواف المكونات
+          </TabsTrigger>
+        </TabsList>
+
+        {/* 1. THEME PRESETS TAB */}
+        <TabsContent value="presets" className="space-y-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {THEME_PRESETS.map((theme) => {
+              const isSelected = previewTheme === theme.id && !customPrimary;
+              const isSaved = savedTheme === theme.id && !savedCustomPrimary;
+
+              return (
+                <div
+                  key={theme.id}
+                  onClick={() => handleSelectPreset(theme)}
+                  className={`relative p-5 rounded-xl border-2 text-right transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
+                    isSelected
+                      ? "border-primary bg-primary/[0.05] ring-2 ring-primary/20"
+                      : "border-border hover:border-primary/40 bg-card"
+                  }`}
+                  data-testid={`button-theme-${theme.id}`}
+                >
+                  <div>
+                    {/* Color Swatch & Badge */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="w-10 h-10 rounded-xl shadow-inner shrink-0 border border-black/15 flex items-center justify-center text-white text-sm font-bold"
+                          style={{ backgroundColor: theme.hexPrimary }}
+                        >
+                          {isSelected ? <Check className="w-5 h-5 drop-shadow" /> : ""}
+                        </div>
+                        <div>
+                          <span className="font-bold text-sm block text-foreground leading-tight">
+                            {theme.name}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-mono">
+                            {theme.hexPrimary}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium shrink-0 ${theme.badgeColor}`}>
+                        {theme.badge}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+                      {theme.desc}
+                    </p>
+
+                    {/* Color bars */}
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <div
+                        className="h-3 rounded flex-1 border border-black/10"
+                        style={{ backgroundColor: theme.hexPrimary }}
+                        title={`الأساسي: ${theme.hexPrimary}`}
+                      />
+                      <div
+                        className="h-3 w-8 rounded border border-black/10"
+                        style={{ backgroundColor: theme.hexAccent }}
+                        title={`الفرعي: ${theme.hexAccent}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-border/60 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      {isSaved && (
+                        <Badge variant="secondary" className="text-[10px] h-5">
+                          المعتمد حالياً
+                        </Badge>
+                      )}
+                      {isSelected && !isSaved && (
+                        <span className="text-primary font-medium flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+                          قيد المعاينة
+                        </span>
+                      )}
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant={isSelected ? "default" : "outline"}
+                      className="h-7 text-xs px-3"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectPreset(theme);
+                      }}
+                    >
+                      {isSelected ? "مُحدد للمعاينة" : "معاينة النمط"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        {/* 2. CUSTOM COLORS (HEX) TAB */}
+        <TabsContent value="colors" className="space-y-4">
+          <Card className="p-6">
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-base font-bold text-foreground mb-1">
+                  تحديد الألوان الأساسية المخصصة (Custom HEX Palette)
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  يمكنك إدخال أي كود لوني بصيغة HEX بدقة لتطبيق الهوية المؤسسية الخاصة بك على الفور.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Primary Color Picker */}
+                <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="font-bold text-sm text-foreground block">
+                        اللون الأساسي للواجهة (Primary Color)
+                      </Label>
+                      <span className="text-xs text-muted-foreground">
+                        يتحكم في الأزرار الرئيسية، شريط القائمة الجانبية، والعناوين النشطة
+                      </span>
+                    </div>
+                    <div
+                      className="w-8 h-8 rounded-lg shadow border"
+                      style={{ backgroundColor: customPrimary || currentPreset.hexPrimary }}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customPrimary || currentPreset.hexPrimary}
+                      onChange={(e) => updateAppearance({ primaryHex: e.target.value })}
+                      className="w-10 h-10 p-0 border rounded-lg cursor-pointer shrink-0"
+                    />
+                    <Input
+                      dir="ltr"
+                      value={customPrimary || currentPreset.hexPrimary}
+                      onChange={(e) => updateAppearance({ primaryHex: e.target.value })}
+                      placeholder="#881337"
+                      className="font-mono text-sm uppercase"
+                    />
+                  </div>
+
+                  {/* Quick Color Swatches */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] text-muted-foreground font-medium block">ألوان مقترحة وسريعة:</span>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { name: "خمري ملكي", hex: "#881337" },
+                        { name: "كحلي سيادي", hex: "#1E3A8A" },
+                        { name: "زمردي راقي", hex: "#065F46" },
+                        { name: "أرجواني ملكي", hex: "#581C87" },
+                        { name: "فحمي رسمي", hex: "#334155" },
+                        { name: "برتقالي دافئ", hex: "#C2410C" },
+                        { name: "أزرق أردوازي", hex: "#0369A1" },
+                      ].map((swatch) => (
+                        <button
+                          key={swatch.hex}
+                          type="button"
+                          onClick={() => updateAppearance({ primaryHex: swatch.hex })}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs bg-card hover:bg-muted transition-colors"
+                        >
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: swatch.hex }} />
+                          <span>{swatch.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Secondary/Accent Color Picker */}
+                <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="font-bold text-sm text-foreground block">
+                        اللون الثانوي والفرعي (Secondary / Accent Color)
+                      </Label>
+                      <span className="text-xs text-muted-foreground">
+                        يتحكم في شارات التنبيهات، الأزرار الثانوية، وخطوط التأكيد
+                      </span>
+                    </div>
+                    <div
+                      className="w-8 h-8 rounded-lg shadow border"
+                      style={{ backgroundColor: customAccent || currentPreset.hexAccent }}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customAccent || currentPreset.hexAccent}
+                      onChange={(e) => updateAppearance({ accentHex: e.target.value })}
+                      className="w-10 h-10 p-0 border rounded-lg cursor-pointer shrink-0"
+                    />
+                    <Input
+                      dir="ltr"
+                      value={customAccent || currentPreset.hexAccent}
+                      onChange={(e) => updateAppearance({ accentHex: e.target.value })}
+                      placeholder="#E11D48"
+                      className="font-mono text-sm uppercase"
+                    />
+                  </div>
+
+                  {/* Quick Color Swatches */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] text-muted-foreground font-medium block">ألوان فرعية مقترحة:</span>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { name: "ياقوتي ساطع", hex: "#E11D48" },
+                        { name: "عنبري ذهبي", hex: "#D97706" },
+                        { name: "زمردي فاتح", hex: "#10B981" },
+                        { name: "بنفسجي مشرق", hex: "#A855F7" },
+                        { name: "سماوي تقني", hex: "#0284C7" },
+                        { name: "برتقالي حيوي", hex: "#F97316" },
+                      ].map((swatch) => (
+                        <button
+                          key={swatch.hex}
+                          type="button"
+                          onClick={() => updateAppearance({ accentHex: swatch.hex })}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs bg-card hover:bg-muted transition-colors"
+                        >
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: swatch.hex }} />
+                          <span>{swatch.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Reset Custom Colors */}
+              {(customPrimary || customAccent) && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => updateAppearance({ primaryHex: "", accentHex: "" })}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    إلغاء التخصيص اليدوي والعودة للسمات الجاهزة
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* 3. TYPOGRAPHY ENGINE TAB */}
+        <TabsContent value="fonts" className="space-y-4">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {FONT_OPTIONS.map((font) => {
+              const isSelected = previewFont === font.id;
+              const isSaved = savedFont === font.id;
+
+              return (
+                <div
+                  key={font.id}
+                  onClick={() => updateAppearance({ font: font.id })}
+                  className={`p-5 rounded-xl border-2 text-right transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
+                    isSelected
+                      ? "border-primary bg-primary/[0.04] ring-2 ring-primary/20"
+                      : "border-border hover:border-primary/40 bg-card"
+                  }`}
+                  data-testid={`button-font-${font.id}`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                          <Type className="w-4 h-4" />
+                        </div>
+                        <span className="font-bold text-sm text-foreground">{font.name}</span>
+                      </div>
+                      {isSelected && <Badge className="bg-primary text-primary-foreground text-[10px]">محدد</Badge>}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+                      {font.desc}
+                    </p>
+
+                    {/* Live Font Sample rendering */}
+                    <div
+                      className="p-3 rounded-lg bg-muted/40 border text-foreground text-sm font-semibold leading-relaxed mb-3"
+                      style={{ fontFamily: font.fontFamily }}
+                    >
+                      {font.previewSample}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
+                    {isSaved ? (
+                      <span className="text-[11px] text-muted-foreground">الخط المعتمد للنظام</span>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground">انقر للاختيار والمعاينة</span>
+                    )}
+                    <Button
+                      size="sm"
+                      variant={isSelected ? "default" : "outline"}
+                      className="h-7 text-xs px-3"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateAppearance({ font: font.id });
+                      }}
+                    >
+                      {isSelected ? "الخط النشط" : "معاينة الخط"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        {/* 4. SIDEBAR STYLE TAB */}
+        <TabsContent value="sidebar" className="space-y-4">
+          <div className="grid md:grid-cols-3 gap-4">
+            {[
+              {
+                id: "primary" as const,
+                title: "شريط بلون الهوية الأساسي (الملون)",
+                desc: "شريط جانبي متصل بلون الهوية الرسمي (مثل الخمري الداكن #881337) مع أيقونات ناصعة وتأثيرات مضيئة للعنصر النشط.",
+                badge: "🌟 الموصى به والمطابق للهوية",
+                color: "bg-primary text-primary-foreground",
+              },
+              {
+                id: "dark" as const,
+                title: "شريط داكن فخم (Dark Slate)",
+                desc: "أردوازي داكن كلاسيكي (#0F172A) يعطي تركيزاً حاداً لمحتوى الشاشة وجداول المعاملات.",
+                badge: "⚫ داكن كلاسيكي",
+                color: "bg-slate-900 text-white",
+              },
+              {
+                id: "light" as const,
+                title: "شريط فاتح ناصع (Clean Light)",
+                desc: "مدمج مع خلفية التطبيق الفاتحة للحصول على واجهة بسيطة وواسعة متناسقة.",
+                badge: "⚪ فاتح بسيط",
+                color: "bg-card text-card-foreground border",
+              },
+            ].map((s) => {
+              const isSelected = previewSidebar === s.id;
+              const isSaved = savedSidebar === s.id;
+
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => updateAppearance({ sidebar: s.id })}
+                  className={`p-5 rounded-xl border-2 text-right transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
+                    isSelected
+                      ? "border-primary bg-primary/[0.04] ring-2 ring-primary/20"
+                      : "border-border hover:border-primary/40 bg-card"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-bold text-sm text-foreground">{s.title}</h4>
+                      <Badge variant="outline" className="text-[10px]">{s.badge}</Badge>
+                    </div>
+
+                    {/* Sidebar Mini Preview Box */}
+                    <div className="h-28 rounded-lg border overflow-hidden flex mb-3 shadow-inner">
+                      <div className={`w-20 p-2 flex flex-col gap-1.5 ${s.color}`}>
+                        <div className="w-5 h-2 rounded bg-current opacity-40 mb-1" />
+                        <div className="w-full h-3 rounded bg-current opacity-90" />
+                        <div className="w-full h-3 rounded bg-current opacity-30" />
+                        <div className="w-full h-3 rounded bg-current opacity-30" />
+                      </div>
+                      <div className="flex-1 bg-muted/40 p-2 space-y-1.5">
+                        <div className="w-16 h-2 rounded bg-foreground/20" />
+                        <div className="w-full h-8 rounded bg-background border" />
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+                      {s.desc}
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                    {isSaved && <Badge variant="secondary" className="text-[10px]">المعتمد</Badge>}
+                    <Button
+                      size="sm"
+                      variant={isSelected ? "default" : "outline"}
+                      className="h-7 text-xs px-3 ml-auto"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateAppearance({ sidebar: s.id });
+                      }}
+                    >
+                      {isSelected ? "مطبق حالياً" : "تطبيق هذا النمط"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        {/* 5. BORDER RADIUS & GEOMETRY TAB */}
+        <TabsContent value="geometry" className="space-y-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { id: "sm" as const, name: "حواف حادة رسمية (4px)", radiusClass: "rounded-xs", desc: "طابع حاد كلاسيكي يناسب الأنظمة الرقابية والمالية الصارمة." },
+              { id: "md" as const, name: "حواف متوازنة (8px)", radiusClass: "rounded-md", desc: "التنسيق القياسي المتوازن المريح لكافة أنواع الواجهات." },
+              { id: "lg" as const, name: "حواف ناعمة عصرية (12px)", radiusClass: "rounded-xl", desc: "انحناءات ناعمة حديثة تمنح التطبيق مظهراً عصرياً جذاباً." },
+              { id: "xl" as const, name: "حواف دائرية انسيابية (16px)", radiusClass: "rounded-2xl", desc: "انحناء بارز يعزز اللمسة البصرية الحديثة والودية." },
+            ].map((r) => {
+              const isSelected = previewRadius === r.id;
+              const isSaved = savedRadius === r.id;
+
+              return (
+                <div
+                  key={r.id}
+                  onClick={() => updateAppearance({ radius: r.id })}
+                  className={`p-5 rounded-xl border-2 text-right transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
+                    isSelected
+                      ? "border-primary bg-primary/[0.04] ring-2 ring-primary/20"
+                      : "border-border hover:border-primary/40 bg-card"
+                  }`}
+                >
+                  <div>
+                    <h4 className="font-bold text-sm text-foreground mb-2">{r.name}</h4>
+                    <p className="text-xs text-muted-foreground leading-relaxed mb-4">{r.desc}</p>
+
+                    {/* Shape preview box */}
+                    <div className="p-3 bg-muted/40 border rounded-lg flex items-center justify-center gap-2 mb-3">
+                      <div className={`w-12 h-10 bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold shadow ${r.radiusClass}`}>
+                        زر
+                      </div>
+                      <div className={`w-16 h-10 bg-card border text-foreground text-xs flex items-center justify-center ${r.radiusClass}`}>
+                        حقل
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                    {isSaved && <Badge variant="secondary" className="text-[10px]">المعتمد</Badge>}
+                    <Button
+                      size="sm"
+                      variant={isSelected ? "default" : "outline"}
+                      className="h-7 text-xs px-3 ml-auto"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateAppearance({ radius: r.id });
+                      }}
+                    >
+                      {isSelected ? "محدد" : "معاينة الحواف"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Comprehensive Interactive Live UI Showcase */}
+      <Card className="p-6 border shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 pb-4 border-b">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+              <Activity className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="font-bold text-base text-foreground">
+                المعاينة الحية الفورية لعناصر النظام (Live Interactive Showcase)
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                توضح هذه المساحة الحية كيفية تفاعل البطاقات، الأزرار، الشارات، وحقول الإدخال مع الهوية الحالية المختارة
+              </p>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-xs font-semibold px-3 py-1 bg-primary/5 text-primary border-primary/20 shrink-0">
+            الخط النشط: {FONT_OPTIONS.find((f) => f.id === previewFont)?.name.split(" (")[0]}
+          </Badge>
+        </div>
+
+        {/* Dashboard-like mini preview */}
+        <div className="space-y-6">
+          {/* 1. Stat cards showcase */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "إجمالي المعاملات والكتب", val: "1,420", change: "+12% هذا الشهر", icon: Send },
+              { label: "المعاملات المنجزة", val: "1,280", change: "نسبة إنجاز 94%", icon: CheckCircle2 },
+              { label: "قيد المتابعة والتأشير", val: "140", change: "تتطلب الإجراء", icon: Clock },
+              { label: "المستخدمين النشطين", val: "86", change: "في 14 قسماً", icon: Users },
+            ].map((stat, i) => {
+              const Icon = stat.icon;
+              return (
+                <div key={i} className="p-4 rounded-xl border bg-card/60 shadow-2xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground font-medium">{stat.label}</span>
+                    <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                      <Icon className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-extrabold text-foreground">{stat.val}</div>
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium block">
+                    {stat.change}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 2. Interactive Controls Preview */}
+          <div className="grid md:grid-cols-3 gap-6 pt-2">
+            {/* Column 1: Buttons */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-muted-foreground block uppercase tracking-wider">
+                الأزرار والإجراءات
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm">زر رئيسي (Primary)</Button>
+                <Button size="sm" variant="secondary">زر فرعي (Secondary)</Button>
+                <Button size="sm" variant="outline">محدد (Outline)</Button>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Button size="sm" className="gap-1.5">
+                  <Send className="w-3.5 h-3.5" />
+                  إرسال كتاب رسمي
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <Printer className="w-3.5 h-3.5" />
+                  طباعة
+                </Button>
+              </div>
+            </div>
+
+            {/* Column 2: Badges & Alerts */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-muted-foreground block uppercase tracking-wider">
+                شارات الحالة والتنبيهات
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                <Badge className="bg-primary text-primary-foreground">صادر رسمي</Badge>
+                <Badge variant="outline" className="border-primary text-primary">قيد التدقيق</Badge>
+                <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">عاجل وسري</Badge>
+                <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">مكتمل وموقع</Badge>
+              </div>
+              <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-xs text-foreground flex items-center gap-2">
+                <Bell className="w-4 h-4 text-primary shrink-0" />
+                <span>إشعار: تم توقيع المعاملة رقم (ص-2026/104) بنجاح.</span>
+              </div>
+            </div>
+
+            {/* Column 3: Form Fields */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-muted-foreground block uppercase tracking-wider">
+                حقول الإدخال والبيانات
+              </span>
+              <div className="space-y-2">
+                <Input
+                  defaultValue="شركة نفط الوسط - قسم تكنولوجيا المعلومات"
+                  className="text-xs h-9"
+                  placeholder="اسم الجهة أو الموضوع"
+                />
+                <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+                  <span>كتاب صادر رقم: 2026/89</span>
+                  <span className="text-primary font-bold">جاهز للإرسال</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -760,7 +1551,7 @@ function ActivityLog() {
   const { data: logs, isLoading } = useQuery<any[]>({
     queryKey: ["/api/activity-log", queryString],
     queryFn: async () => {
-      const res = await fetch(`/api/activity-log${queryString ? `?${queryString}` : ""}`, { credentials: "include" });
+      const res = await authFetch(`/api/activity-log${queryString ? `?${queryString}` : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -803,7 +1594,6 @@ function ActivityLog() {
     departments: "الأقسام",
     employees: "الموظفين",
     leave_requests: "الإجازات",
-    service_requests: "الخدمات",
     permissions: "الصلاحيات",
   };
 
@@ -1685,7 +2475,6 @@ const factoryResetCategories: Record<string, { label: string; desc: string }> = 
   users: { label: "المستخدمين", desc: "حذف جميع الحسابات مع الحفاظ على حساب مدير النظام (admin) وإعادة كلمة المرور الافتراضية" },
   departments: { label: "الهيكل التنظيمي", desc: "حذف جميع التشكيلات والأقسام من الهيكل التنظيمي" },
   leave_requests: { label: "الإجازات", desc: "حذف جميع طلبات الإجازة" },
-  service_requests: { label: "طلبات الخدمة", desc: "حذف جميع طلبات الخدمة (صيانة، تقنية، إدارية)" },
   settings: { label: "الإعدادات", desc: "إعادة جميع إعدادات النظام إلى القيم الافتراضية وحذف سجل النشاطات وطلبات إعادة كلمة المرور" },
 };
 

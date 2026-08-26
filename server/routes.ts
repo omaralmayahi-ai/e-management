@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { seedDatabase } from "./seed";
 import { sanitizeHtmlContent } from "./htmlSanitizer";
-import { insertDepartmentSchema, insertCorrespondenceSchema, insertLeaveRequestSchema, insertServiceRequestSchema, insertWorkflowEventSchema, insertUserPermissionSchema } from "@shared/schema";
+import { insertDepartmentSchema, insertCorrespondenceSchema, insertLeaveRequestSchema, insertWorkflowEventSchema, insertUserPermissionSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -149,11 +149,11 @@ const logoUpload = multer({
   }),
   limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp"];
-    if (allowed.includes(file.mimetype)) {
+    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp", "image/gif", "image/bmp", "image/x-icon"];
+    if (allowed.includes(file.mimetype) || file.mimetype.startsWith("image/")) {
       cb(null, true);
     } else {
-      cb(new Error("نوع الملف غير مدعوم. يرجى رفع صورة (PNG, JPG, SVG, WebP)"));
+      cb(new Error("نوع الملف غير مدعوم. يرجى رفع صورة (PNG, JPG, SVG, WebP, GIF)"));
     }
   },
 });
@@ -244,7 +244,6 @@ async function notifyEmployee(employeeId: number, message: string, meta?: Notifi
 
 const validCorrespondenceStatuses = ["draft", "under_review", "pending_approval", "approved", "issued", "in_progress", "completed", "archived"] as const;
 const validLeaveStatuses = ["pending", "approved_by_direct", "approved_by_section", "approved_by_hr", "approved", "rejected", "cancelled"] as const;
-const validServiceStatuses = ["pending", "assigned", "in_progress", "completed", "verified", "rejected", "cancelled"] as const;
 
 const correspondenceUpdateSchema = z.object({
   status: z.enum(validCorrespondenceStatuses).optional(),
@@ -269,15 +268,6 @@ const correspondenceUpdateSchema = z.object({
 const leaveStatusUpdateSchema = z.object({
   status: z.enum(validLeaveStatuses),
 });
-
-const serviceUpdateSchema = z.object({
-  status: z.enum(validServiceStatuses).optional(),
-  assignedToId: z.number().optional(),
-  assignedDepartmentId: z.number().optional(),
-  notes: z.string().optional(),
-  completionNotes: z.string().optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-}).strict();
 
 async function migratePermissions() {
   try {
@@ -526,7 +516,6 @@ export async function registerRoutes(
       if (data.role === "central_mail") {
         data.canAccessCorrespondence = true;
         data.canAccessLeaveRequests = false;
-        data.canAccessServiceRequests = false;
       }
       if (data.role !== "officer" && data.role !== "admin") {
         data.canReceiveExternalIncoming = false;
@@ -585,7 +574,6 @@ export async function registerRoutes(
       if (data.role === "central_mail") {
         data.canAccessCorrespondence = true;
         data.canAccessLeaveRequests = false;
-        data.canAccessServiceRequests = false;
       }
       if (data.role !== "officer" && data.role !== "admin") {
         data.canReceiveExternalIncoming = false;
@@ -2067,54 +2055,6 @@ export async function registerRoutes(
       const employee = await storage.getEmployee(employeeId);
       if (!employee) return res.status(401).json({ message: "Unauthorized" });
       const item = await storage.updateLeaveRequestStatus(id, status, employee.id);
-      if (!item) return res.status(404).json({ message: "الطلب غير موجود" });
-      res.json(item);
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ في تحديث الطلب" });
-    }
-  });
-
-  app.get("/api/service-requests", isAuthenticated, async (_req, res) => {
-    try {
-      const items = await storage.getServiceRequests();
-      res.json(items);
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ في جلب طلبات الخدمات" });
-    }
-  });
-
-  app.post("/api/service-requests", isAuthenticated, async (req: any, res) => {
-    try {
-      const employeeId = (req.session as any).employeeId;
-      const employee = await storage.getEmployee(employeeId);
-      if (!employee) return res.status(401).json({ message: "Unauthorized" });
-
-      const count = (await storage.getServiceRequests()).length;
-      const refNumber = `SR-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
-
-      const data = {
-        ...req.body,
-        requestNumber: refNumber,
-        requestedById: employee.id,
-      };
-
-      const parsed = insertServiceRequestSchema.parse(data);
-      const item = await storage.createServiceRequest(parsed);
-      res.status(201).json(item);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "بيانات غير صحيحة", errors: error.errors });
-      }
-      console.error("Error creating service request:", error);
-      res.status(500).json({ message: "حدث خطأ في إنشاء طلب الخدمة" });
-    }
-  });
-
-  app.patch("/api/service-requests/:id", isAuthenticated, async (req: any, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const validated = serviceUpdateSchema.parse(req.body);
-      const item = await storage.updateServiceRequest(id, validated);
       if (!item) return res.status(404).json({ message: "الطلب غير موجود" });
       res.json(item);
     } catch (error) {
@@ -3658,7 +3598,12 @@ export async function registerRoutes(
       res.json({
         orgName: settingsObj.orgName || "شركة نفط الوسط",
         systemName: settingsObj.systemName || "نظام إدارة المعاملات الإلكتروني",
-        theme: settingsObj.theme || "blue",
+        theme: settingsObj.theme || "crimson",
+        customPrimary: settingsObj.customPrimary || "",
+        customAccent: settingsObj.customAccent || "",
+        fontFamily: settingsObj.fontFamily || "cairo",
+        sidebarStyle: settingsObj.sidebarStyle || "primary",
+        borderRadius: settingsObj.borderRadius || "md",
         copyrightOwner: settingsObj.copyrightOwner || "",
         logoUrl: logoExists ? "/api/uploads/logo.png" : null,
       });
@@ -3667,9 +3612,10 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/uploads/logo.png", (req, res) => {
+  app.get("/api/uploads/logo.png", (_req, res) => {
     const logoPath = path.join(uploadsDir, "logo.png");
     if (fs.existsSync(logoPath)) {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(logoPath);
     } else {
       res.status(404).json({ message: "لم يتم رفع شعار" });
@@ -3686,39 +3632,69 @@ export async function registerRoutes(
   });
 
   const isAdmin = async (req: any, res: any, next: any) => {
-    const employeeId = (req.session as any)?.employeeId;
+    const employeeId = (req.session as any)?.employeeId || (req as any).employeeId;
     if (!employeeId) return res.status(401).json({ message: "غير مصرح" });
     const emp = await storage.getEmployee(employeeId);
     if (!emp || emp.role !== "admin") return res.status(403).json({ message: "غير مصرح بهذا الإجراء" });
     next();
   };
 
-  app.post("/api/settings/logo", isAuthenticated, isAdmin, logoUpload.single("logo"), async (req: any, res) => {
-    try {
-      const employeeId = (req.session as any).employeeId;
+  app.post(
+    "/api/settings/logo",
+    isAuthenticated,
+    isAdmin,
+    (req: any, res: any, next: any) => {
+      logoUpload.single("logo")(req, res, (err: any) => {
+        if (err) {
+          const message =
+            err?.code === "LIMIT_FILE_SIZE"
+              ? "حجم الشعار كبير جداً. الحد الأقصى 2 ميجابايت."
+              : (err?.message || "تعذر رفع ملف الشعار");
+          return res.status(400).json({ message });
+        }
+        next();
+      });
+    },
+    async (req: any, res) => {
+      try {
+        const employeeId = (req.session as any)?.employeeId || (req as any).employeeId;
 
-      if (!req.file) return res.status(400).json({ message: "يرجى رفع ملف صورة صالح (PNG, JPG, SVG, WebP) بحجم أقصى 2MB" });
+        if (!req.file) {
+          return res.status(400).json({ message: "يرجى اختيار ملف صورة صالح (PNG, JPG, SVG, WebP, GIF) بحجم أقصى 2MB" });
+        }
+
+        await storage.createAuditLog({
+          entityType: "settings",
+          entityId: 0,
+          action: "update_logo",
+          performedById: employeeId,
+          employeeId: employeeId,
+          module: "settings",
+          details: "تحديث شعار النظام",
+        });
+
+        res.json({ message: "تم رفع الشعار بنجاح", logoUrl: "/api/uploads/logo.png" });
+      } catch (error) {
+        res.status(500).json({ message: "حدث خطأ في رفع الشعار" });
+      }
+    }
+  );
+
+  app.delete("/api/settings/logo", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const employeeId = (req.session as any)?.employeeId || (req as any).employeeId;
+      const logoPath = path.join(uploadsDir, "logo.png");
+      if (fs.existsSync(logoPath)) fs.unlinkSync(logoPath);
 
       await storage.createAuditLog({
         entityType: "settings",
         entityId: 0,
-        action: "update_logo",
+        action: "delete_logo",
         performedById: employeeId,
         employeeId: employeeId,
         module: "settings",
-        details: "تحديث شعار النظام",
+        details: "حذف شعار النظام",
       });
-
-      res.json({ message: "تم رفع الشعار بنجاح", logoUrl: "/api/uploads/logo.png" });
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ في رفع الشعار" });
-    }
-  });
-
-  app.delete("/api/settings/logo", isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const logoPath = path.join(uploadsDir, "logo.png");
-      if (fs.existsSync(logoPath)) fs.unlinkSync(logoPath);
 
       res.json({ message: "تم حذف الشعار" });
     } catch (error) {
@@ -4166,7 +4142,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "يجب كتابة نص التأكيد بشكل صحيح" });
       }
 
-      const validCategories = ["correspondence", "notifications", "users", "departments", "leave_requests", "service_requests", "settings"];
+      const validCategories = ["correspondence", "notifications", "users", "departments", "leave_requests", "settings"];
       for (const cat of categories) {
         if (!validCategories.includes(cat)) {
           return res.status(400).json({ message: `فئة غير صالحة: ${cat}` });
@@ -4201,8 +4177,8 @@ export async function registerRoutes(
         await database.execute(sqlTag`DELETE FROM notification_recipients WHERE employee_id != ${emp.id}`);
         await database.execute(sqlTag`DELETE FROM password_reset_requests`);
         await database.execute(sqlTag`DELETE FROM employees WHERE id != ${emp.id}`);
-        const defaultHash = bcrypt.hashSync("admin1989", 10);
-        await database.execute(sqlTag`UPDATE employees SET password_hash = ${defaultHash}, must_change_password = true, department_id = NULL, last_login_ip = NULL, last_login_location = NULL WHERE id = ${emp.id}`);
+        const defaultHash = bcrypt.hashSync("admin123", 10);
+        await database.execute(sqlTag`UPDATE employees SET password_hash = ${defaultHash}, must_change_password = false, department_id = NULL, last_login_ip = NULL, last_login_location = NULL WHERE id = ${emp.id}`);
         resetResults.push("المستخدمين");
       }
 
@@ -4215,11 +4191,6 @@ export async function registerRoutes(
       if (categories.includes("leave_requests")) {
         await database.execute(sqlTag`DELETE FROM leave_requests`);
         resetResults.push("الإجازات");
-      }
-
-      if (categories.includes("service_requests")) {
-        await database.execute(sqlTag`DELETE FROM service_requests`);
-        resetResults.push("طلبات الخدمة");
       }
 
       if (categories.includes("settings")) {

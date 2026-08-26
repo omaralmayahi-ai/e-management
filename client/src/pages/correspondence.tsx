@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, authFetch } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
@@ -479,7 +479,7 @@ function WorkflowTimeline({ corrId, departments, employees, isInSenderChain, use
   const { data: events, isLoading } = useQuery<WorkflowEvent[]>({
     queryKey: ["/api/correspondence", corrId, "workflow"],
     queryFn: async () => {
-      const res = await fetch(`/api/correspondence/${corrId}/workflow`, { credentials: "include" });
+      const res = await authFetch(`/api/correspondence/${corrId}/workflow`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -618,7 +618,7 @@ function ReplyComposeForm({ corr, departments, onDone }: {
   const { data: allFlowTemplates } = useQuery<any[]>({
     queryKey: ["/api/flow-templates"],
     queryFn: async () => {
-      const res = await fetch("/api/flow-templates", { credentials: "include" });
+      const res = await authFetch("/api/flow-templates");
       if (!res.ok) return [];
       return res.json();
     },
@@ -770,7 +770,7 @@ function ContributorsBlock({ corr, departments }: { corr: any; departments: Depa
   const { data: parentContributions } = useQuery<any[]>({
     queryKey: ["/api/correspondence", corr.parentCorrespondenceId, "contributions"],
     queryFn: async () => {
-      const res = await fetch(`/api/correspondence/${corr.parentCorrespondenceId}/contributions`, { credentials: "include" });
+      const res = await authFetch(`/api/correspondence/${corr.parentCorrespondenceId}/contributions`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -842,7 +842,7 @@ function ContributionsSection({ corrId, corr, departments }: { corrId: number; c
   const { data: contributions, isLoading } = useQuery<any[]>({
     queryKey: ["/api/correspondence", corrId, "contributions"],
     queryFn: async () => {
-      const res = await fetch(`/api/correspondence/${corrId}/contributions`, { credentials: "include" });
+      const res = await authFetch(`/api/correspondence/${corrId}/contributions`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -900,7 +900,7 @@ function ContributionsSection({ corrId, corr, departments }: { corrId: number; c
     fd.append("file", uploadFile);
     fd.append("description", uploadDesc);
     fd.append("contributionId", String(cid));
-    const res = await fetch(`/api/correspondence/${corrId}/attachments`, { method: "POST", credentials: "include", body: fd });
+    const res = await authFetch(`/api/correspondence/${corrId}/attachments`, { method: "POST", body: fd });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       toast({ title: "تعذر رفع المرفق", description: err.message || "", variant: "destructive" });
@@ -1115,7 +1115,7 @@ function WorkflowActionPanel({ corr, departments, employees, workflowEvents, onR
   const { data: panelContributions } = useQuery<any[]>({
     queryKey: ["/api/correspondence", corr.id, "contributions"],
     queryFn: async () => {
-      const res = await fetch(`/api/correspondence/${corr.id}/contributions`, { credentials: "include" });
+      const res = await authFetch(`/api/correspondence/${corr.id}/contributions`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -1142,7 +1142,7 @@ function WorkflowActionPanel({ corr, departments, employees, workflowEvents, onR
   const { data: allFlowTemplates } = useQuery<any[]>({
     queryKey: ["/api/flow-templates"],
     queryFn: async () => {
-      const res = await fetch(`/api/flow-templates`, { credentials: "include" });
+      const res = await authFetch(`/api/flow-templates`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -1906,7 +1906,7 @@ function CorrespondenceAttachmentsView({ corrId, isScannedDocument }: { corrId: 
   const { data: attachments } = useQuery<any[]>({
     queryKey: ["/api/correspondence", corrId, "attachments"],
     queryFn: async () => {
-      const res = await fetch(`/api/correspondence/${corrId}/attachments`, { credentials: "include" });
+      const res = await authFetch(`/api/correspondence/${corrId}/attachments`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -1964,7 +1964,7 @@ function CorrespondenceAttachmentsView({ corrId, isScannedDocument }: { corrId: 
                   className="gap-1 text-xs mx-1"
                   data-testid={`button-download-attachment-${att.id}`}
                   onClick={async () => {
-                    const res = await fetch(`/api/attachments/${att.id}/download`);
+                    const res = await authFetch(`/api/attachments/${att.id}/download`);
                     const blob = await res.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement("a");
@@ -2020,7 +2020,7 @@ function CorrespondenceAttachmentsView({ corrId, isScannedDocument }: { corrId: 
                     title="تنزيل"
                     data-testid={`button-download-attachment-${att.id}`}
                     onClick={async () => {
-                      const res = await fetch(`/api/attachments/${att.id}/download`);
+                      const res = await authFetch(`/api/attachments/${att.id}/download`);
                       const blob = await res.blob();
                       const url = window.URL.createObjectURL(blob);
                       const a = document.createElement("a");
@@ -2084,7 +2084,7 @@ function CorrespondenceDetail({ corrId, departments, employees, onClose, orgName
   const { data: detail, isLoading } = useQuery<any>({
     queryKey: ["/api/correspondence", corrId],
     queryFn: async () => {
-      const res = await fetch(`/api/correspondence/${corrId}`, { credentials: "include" });
+      const res = await authFetch(`/api/correspondence/${corrId}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -2093,7 +2093,7 @@ function CorrespondenceDetail({ corrId, departments, employees, onClose, orgName
   const { data: wfEvents } = useQuery<any[]>({
     queryKey: ["/api/correspondence", corrId, "workflow"],
     queryFn: async () => {
-      const res = await fetch(`/api/correspondence/${corrId}/workflow`, { credentials: "include" });
+      const res = await authFetch(`/api/correspondence/${corrId}/workflow`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -2103,7 +2103,7 @@ function CorrespondenceDetail({ corrId, departments, employees, onClose, orgName
   const { data: existingAttachments } = useQuery<any[]>({
     queryKey: ["/api/correspondence", corrId, "attachments"],
     queryFn: async () => {
-      const res = await fetch(`/api/correspondence/${corrId}/attachments`, { credentials: "include" });
+      const res = await authFetch(`/api/correspondence/${corrId}/attachments`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -2124,10 +2124,9 @@ function CorrespondenceDetail({ corrId, departments, employees, onClose, orgName
             const formData = new FormData();
             formData.append("file", att.file);
             formData.append("description", att.description);
-            await fetch(`/api/correspondence/${corrId}/attachments`, {
+            await authFetch(`/api/correspondence/${corrId}/attachments`, {
               method: "POST",
               body: formData,
-              credentials: "include",
             });
           } catch (e) {}
         }
@@ -2174,7 +2173,7 @@ function CorrespondenceDetail({ corrId, departments, employees, onClose, orgName
   const { data: allFlowTemplatesForDetail } = useQuery<any[]>({
     queryKey: ["/api/flow-templates"],
     queryFn: async () => {
-      const res = await fetch(`/api/flow-templates`, { credentials: "include" });
+      const res = await authFetch(`/api/flow-templates`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -3609,7 +3608,7 @@ function ComposeSection({ departments, onCreated, replyContext, onClearReply, on
     queryKey: ["/api/employees", user?.id, "flow-templates"],
     queryFn: async () => {
       if (!user?.id) return [];
-      const res = await fetch(`/api/employees/${user.id}/flow-templates`, { credentials: "include" });
+      const res = await authFetch(`/api/employees/${user.id}/flow-templates`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -3636,7 +3635,7 @@ function ComposeSection({ departments, onCreated, replyContext, onClearReply, on
     queryKey: ["/api/departments", user?.departmentId, "central-parent"],
     queryFn: async () => {
       if (!user?.departmentId) return null;
-      const res = await fetch(`/api/departments/${user.departmentId}/central-parent`, { credentials: "include" });
+      const res = await authFetch(`/api/departments/${user.departmentId}/central-parent`);
       if (!res.ok) return null;
       return res.json();
     },
@@ -3785,10 +3784,9 @@ function ComposeSection({ departments, onCreated, replyContext, onClearReply, on
             const formData = new FormData();
             formData.append("file", att.file);
             formData.append("description", att.description);
-            const uploadRes = await fetch(`/api/correspondence/${newCorr.id}/attachments`, {
+            const uploadRes = await authFetch(`/api/correspondence/${newCorr.id}/attachments`, {
               method: "POST",
               body: formData,
-              credentials: "include",
             });
             if (!uploadRes.ok) failedUploads++;
           } catch (e) {
@@ -3811,7 +3809,7 @@ function ComposeSection({ departments, onCreated, replyContext, onClearReply, on
 
       if (autoElevate && newCorr.flowTemplateGroupId && newCorr.status === "draft") {
         try {
-          const ftRes = await fetch(`/api/flow-templates`, { credentials: "include" });
+          const ftRes = await authFetch(`/api/flow-templates`);
           if (ftRes.ok) {
             const allFts = await ftRes.json();
             const ft = allFts.find((t: any) => t.id === newCorr.flowTemplateId);
@@ -3924,10 +3922,9 @@ function ComposeSection({ departments, onCreated, replyContext, onClearReply, on
             const formData = new FormData();
             formData.append("file", att.file);
             formData.append("description", `صفحة ${i + 1}`);
-            const uploadRes = await fetch(`/api/correspondence/${newCorr.id}/attachments`, {
+            const uploadRes = await authFetch(`/api/correspondence/${newCorr.id}/attachments`, {
               method: "POST",
               body: formData,
-              credentials: "include",
             });
             if (!uploadRes.ok) failedUploads++;
           } catch (e) {
@@ -4432,7 +4429,7 @@ function ComposeSection({ departments, onCreated, replyContext, onClearReply, on
                   <div dir="rtl">
                     <RichTextEditor
                       value={field.value || ""}
-                      onChange={field.onChange}
+                      onChange={(val) => field.onChange(val)}
                       placeholder="اكتب محتوى المراسلة هنا..."
                       minHeight="240px"
                       testId="input-corr-content"
@@ -5204,7 +5201,7 @@ function FollowUpSection({ items, selectedId, onSelect, departments, orgName, al
   const { data: overdueItems } = useQuery<any[]>({
     queryKey: ["/api/correspondence/overdue-reminders"],
     queryFn: async () => {
-      const res = await fetch("/api/correspondence/overdue-reminders", { credentials: "include" });
+      const res = await authFetch("/api/correspondence/overdue-reminders");
       if (!res.ok) return [];
       return res.json();
     },
@@ -5529,7 +5526,7 @@ function MyFollowUpsSection({ selectedId, onSelect, departments, orgName, allFlo
   const { data: followUpData, isLoading } = useQuery<any>({
     queryKey: ["/api/correspondence/my-followups"],
     queryFn: async () => {
-      const res = await fetch("/api/correspondence/my-followups", { credentials: "include" });
+      const res = await authFetch("/api/correspondence/my-followups");
       if (!res.ok) return { incomingFollowUps: [], outgoingFollowUps: [] };
       return res.json();
     },
@@ -6060,7 +6057,7 @@ export default function CorrespondencePage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/correspondence/check-followup-expiry", { method: "POST", credentials: "include" }).catch(() => {});
+    authFetch("/api/correspondence/check-followup-expiry", { method: "POST" }).catch(() => {});
   }, []);
 
   const { data: items, isLoading } = useQuery<Correspondence[]>({
@@ -6078,7 +6075,7 @@ export default function CorrespondencePage() {
   const { data: readMap } = useQuery<Record<number, string>>({
     queryKey: ["/api/correspondence/read-status"],
     queryFn: async () => {
-      const res = await fetch("/api/correspondence/read-status", { credentials: "include" });
+      const res = await authFetch("/api/correspondence/read-status");
       if (!res.ok) return {};
       return res.json();
     },
@@ -6086,7 +6083,7 @@ export default function CorrespondencePage() {
   const { data: deadlineAlerts } = useQuery<any[]>({
     queryKey: ["/api/correspondence/deadline-alerts"],
     queryFn: async () => {
-      const res = await fetch("/api/correspondence/deadline-alerts", { credentials: "include" });
+      const res = await authFetch("/api/correspondence/deadline-alerts");
       if (!res.ok) return [];
       return res.json();
     },
@@ -6094,7 +6091,7 @@ export default function CorrespondencePage() {
   const { data: myFollowupsForBadge } = useQuery<any>({
     queryKey: ["/api/correspondence/my-followups"],
     queryFn: async () => {
-      const res = await fetch("/api/correspondence/my-followups", { credentials: "include" });
+      const res = await authFetch("/api/correspondence/my-followups");
       if (!res.ok) return { incomingFollowUps: [], outgoingFollowUps: [] };
       return res.json();
     },
@@ -6107,7 +6104,7 @@ export default function CorrespondencePage() {
   const { data: allFlowTemplatesPage } = useQuery<any[]>({
     queryKey: ["/api/flow-templates"],
     queryFn: async () => {
-      const res = await fetch("/api/flow-templates", { credentials: "include" });
+      const res = await authFetch("/api/flow-templates");
       if (!res.ok) return [];
       return res.json();
     },

@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import bcrypt from "bcryptjs";
 import { storage } from "../../storage";
+import { generateAuthToken } from "./replitAuth";
 
 export function registerAuthRoutes(app: Express): void {
   app.post("/api/auth/login", async (req, res) => {
@@ -48,6 +49,7 @@ export function registerAuthRoutes(app: Express): void {
       });
 
       (req.session as any).employeeId = employee.id;
+      (req as any).employeeId = employee.id;
 
       await storage.createAuditLog({
         entityType: "auth",
@@ -61,8 +63,9 @@ export function registerAuthRoutes(app: Express): void {
       });
 
       const dept = employee.departmentId ? await storage.getDepartment(employee.departmentId) : null;
+      const token = generateAuthToken(employee.id, employee.username || "");
 
-      res.json({
+      const userPayload = {
         id: employee.id,
         fullName: employee.fullName,
         username: employee.username,
@@ -73,8 +76,17 @@ export function registerAuthRoutes(app: Express): void {
         mustChangePassword: employee.mustChangePassword,
         canAccessCorrespondence: employee.canAccessCorrespondence,
         canAccessLeaveRequests: employee.canAccessLeaveRequests,
-        canAccessServiceRequests: employee.canAccessServiceRequests,
-      });
+        token,
+      };
+
+      if (req.session && req.session.save) {
+        req.session.save((err) => {
+          if (err) console.error("Session save error:", err);
+          res.json(userPayload);
+        });
+      } else {
+        res.json(userPayload);
+      }
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "حدث خطأ في تسجيل الدخول" });
@@ -82,16 +94,20 @@ export function registerAuthRoutes(app: Express): void {
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy((err) => {
-      if (err) {
-        return res.status(500).json({ message: "حدث خطأ" });
-      }
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) {
+          return res.status(500).json({ message: "حدث خطأ" });
+        }
+        res.json({ message: "تم تسجيل الخروج" });
+      });
+    } else {
       res.json({ message: "تم تسجيل الخروج" });
-    });
+    }
   });
 
   app.get("/api/auth/user", async (req, res) => {
-    const employeeId = (req.session as any)?.employeeId;
+    const employeeId = (req as any).employeeId || (req.session as any)?.employeeId;
     if (!employeeId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -114,7 +130,6 @@ export function registerAuthRoutes(app: Express): void {
         mustChangePassword: employee.mustChangePassword,
         canAccessCorrespondence: employee.canAccessCorrespondence,
         canAccessLeaveRequests: employee.canAccessLeaveRequests,
-        canAccessServiceRequests: employee.canAccessServiceRequests,
       });
     } catch (error) {
       console.error("Auth user error:", error);

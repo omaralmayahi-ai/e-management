@@ -1,6 +1,6 @@
 {
   "name": "Electronic Correspondence & Management System",
-  "description": "Integrated electronic management and correspondence system for government and enterprise workflows, letters, leave requests, and service tracking.",
+  "description": "Integrated electronic management and correspondence system for enterprise workflows, letters, and leave requests.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

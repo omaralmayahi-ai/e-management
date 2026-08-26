@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Mail,
   CalendarDays,
-  Wrench,
   Building2,
   Users,
   FileText,
@@ -30,7 +29,6 @@ const menuItems = [
   { title: "لوحة التحكم", url: "/", icon: LayoutDashboard },
   { title: "المراسلات", url: "/correspondence", icon: Mail },
   { title: "الإجازات والطلبات", url: "/leave-requests", icon: CalendarDays },
-  { title: "طلبات الخدمات", url: "/service-requests", icon: Wrench },
   { title: "إشعارات النظام", url: "/notifications", icon: Bell },
 ];
 
@@ -69,7 +67,6 @@ export function AppSidebar() {
     if (isAdmin) return true;
     if (item.url === "/correspondence" && !user?.canAccessCorrespondence) return false;
     if (item.url === "/leave-requests" && !user?.canAccessLeaveRequests) return false;
-    if (item.url === "/service-requests" && !user?.canAccessServiceRequests) return false;
     return true;
   });
 
@@ -79,45 +76,46 @@ export function AppSidebar() {
   ];
 
   return (
-    <Sidebar side="right">
-      <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
+    <Sidebar side="right" collapsible="icon">
+      <SidebarHeader className="p-3.5 border-b border-sidebar-border group-data-[collapsible=icon]:p-2.5 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center">
+        <div className="flex items-center gap-3 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:justify-center w-full">
           {settingsLoading ? (
-            <div className="w-9 h-9 rounded-md shrink-0" />
+            <div className="w-8 h-8 rounded-md shrink-0 bg-muted/40 animate-pulse" />
           ) : publicSettings?.logoUrl ? (
-            <div className="w-9 h-9 rounded-md overflow-hidden shrink-0">
-              <img src={publicSettings.logoUrl} alt="شعار" className="w-full h-full object-contain" data-testid="img-sidebar-logo" />
+            <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 flex items-center justify-center bg-background/50 border border-sidebar-border/60">
+              <img src={publicSettings.logoUrl} alt="شعار" className="w-full h-full object-contain p-0.5" data-testid="img-sidebar-logo" />
             </div>
           ) : (
-            <div className="w-9 h-9 rounded-md bg-primary flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-xs">
               <FileText className="w-5 h-5 text-primary-foreground" />
             </div>
           )}
-          <div className="flex flex-col min-w-0">
-            <span className="font-bold text-sm truncate" data-testid="text-app-name">{publicSettings?.systemName || "نظام إدارة المعاملات الإلكتروني"}</span>
+          <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden transition-all">
+            <span className="font-bold text-sm truncate text-sidebar-foreground" data-testid="text-app-name">{publicSettings?.systemName || "نظام إدارة المعاملات الإلكتروني"}</span>
             <span className="text-xs text-muted-foreground truncate">{publicSettings?.orgName || "شركة نفط الوسط"}</span>
           </div>
         </div>
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-2">
+      <SidebarContent className="group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:py-2">
+        <SidebarGroup className="group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:w-full">
+          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-2 group-data-[collapsible=icon]:hidden">
             القائمة الرئيسية
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-1.5">
               {allItems.map((item) => {
                 const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
                 return (
-                  <SidebarMenuItem key={item.title}>
+                  <SidebarMenuItem key={item.title} className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
                     <SidebarMenuButton
                       asChild
-                      data-active={isActive}
-                      className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
+                      isActive={isActive}
+                      tooltip={item.title}
+                      className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-semibold group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:p-0 rounded-lg"
                     >
-                      <Link href={item.url} data-testid={`link-nav-${item.url.replace("/", "") || "dashboard"}`}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
+                      <Link href={item.url} data-testid={`link-nav-${item.url.replace("/", "") || "dashboard"}`} className="flex items-center gap-2.5 w-full group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
+                        <item.icon className="w-4 h-4 shrink-0" />
+                        <span className="truncate group-data-[collapsible=icon]:hidden">{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -127,9 +125,9 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-3 border-t border-sidebar-border">
+      <SidebarFooter className="p-3 border-t border-sidebar-border group-data-[collapsible=icon]:hidden">
         {publicSettings?.copyrightOwner && (
-          <p className="text-[9px] text-muted-foreground/50 text-center" data-testid="text-sidebar-copyright">
+          <p className="text-xs font-medium text-sidebar-foreground text-center leading-relaxed" data-testid="text-sidebar-copyright">
             جميع الحقوق محفوظة &copy; {new Date().getFullYear()} {publicSettings.copyrightOwner}
           </p>
         )}

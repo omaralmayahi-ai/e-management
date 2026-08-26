@@ -249,10 +249,6 @@ export default function FlowTemplatesPage() {
             <CalendarDays className="w-4 h-4" />
             مسارات تدفق الإجازات والطلبات
           </TabsTrigger>
-          <TabsTrigger value="service-requests" className="gap-1.5" data-testid="tab-service-requests">
-            <Briefcase className="w-4 h-4" />
-            مسارات تدفق طلبات العمل
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="correspondence" className="space-y-4 mt-4">
@@ -455,14 +451,6 @@ export default function FlowTemplatesPage() {
             <CalendarDays className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
             <h3 className="text-lg font-semibold" data-testid="text-leave-placeholder-title">مسارات تدفق الإجازات والطلبات</h3>
             <p className="text-sm text-muted-foreground mt-2" data-testid="text-leave-placeholder-message">سيتم إعداد هذه المسارات لاحقاً</p>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="service-requests" className="mt-4">
-          <Card className="p-12 text-center" data-testid="card-service-requests-placeholder">
-            <Briefcase className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold" data-testid="text-service-placeholder-title">مسارات تدفق طلبات العمل</h3>
-            <p className="text-sm text-muted-foreground mt-2" data-testid="text-service-placeholder-message">سيتم إعداد هذه المسارات لاحقاً</p>
           </Card>
         </TabsContent>
       </Tabs>

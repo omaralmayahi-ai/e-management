@@ -1,5 +1,5 @@
 import {
-  departments, employees, correspondence, correspondenceAssignments, correspondenceCCs, correspondenceAttachments, auditLog, leaveRequests, serviceRequests,
+  departments, employees, correspondence, correspondenceAssignments, correspondenceCCs, correspondenceAttachments, auditLog, leaveRequests,
   permissions, userPermissions, workflowEvents, passwordResetRequests, systemSettings, correspondenceCounters,
   systemNotifications, notificationRecipients,
   externalEntities, externalCorrespondenceCCs,
@@ -14,7 +14,6 @@ import {
   type CorrespondenceAttachment, type InsertCorrespondenceAttachment,
   type AuditLog, type InsertAuditLog,
   type LeaveRequest, type InsertLeaveRequest,
-  type ServiceRequest, type InsertServiceRequest,
   type Permission, type InsertPermission,
   type UserPermission, type InsertUserPermission,
   type WorkflowEvent, type InsertWorkflowEvent,
@@ -33,6 +32,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, inArray, isNull, isNotNull, not, sql, gte, lte } from "drizzle-orm";
+import { SqliteStorage } from "./sqliteStorage";
 
 export interface IStorage {
   getDepartments(): Promise<Department[]>;
@@ -114,11 +114,6 @@ export interface IStorage {
   createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest>;
   updateLeaveRequestStatus(id: number, status: string, approvedById?: number): Promise<LeaveRequest | undefined>;
 
-  getServiceRequests(): Promise<ServiceRequest[]>;
-  getServiceRequestById(id: number): Promise<ServiceRequest | undefined>;
-  createServiceRequest(data: InsertServiceRequest): Promise<ServiceRequest>;
-  updateServiceRequest(id: number, data: Partial<ServiceRequest>): Promise<ServiceRequest | undefined>;
-
   getPasswordResetRequests(): Promise<PasswordResetRequest[]>;
   getPasswordResetRequest(id: number): Promise<PasswordResetRequest | undefined>;
   createPasswordResetRequest(data: InsertPasswordResetRequest): Promise<PasswordResetRequest>;
@@ -154,6 +149,7 @@ export interface IStorage {
   updateFlowTemplateGroup(id: number, data: Partial<InsertFlowTemplateGroup>): Promise<FlowTemplateGroup | undefined>;
   deleteFlowTemplateGroup(id: number): Promise<boolean>;
   getFlowTemplatesForEmployee(employeeId: number): Promise<any[]>;
+  getNextSequenceNumber(counterType: string, departmentId: number | null, startValue?: number): Promise<number>;
   getOverdueCorrespondence(): Promise<Correspondence[]>;
 
   createDeletionRequest(data: InsertDeletionRequest): Promise<DeletionRequest>;
@@ -656,28 +652,6 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
-  async getServiceRequests(): Promise<ServiceRequest[]> {
-    return db.select().from(serviceRequests).orderBy(desc(serviceRequests.createdAt));
-  }
-
-  async getServiceRequestById(id: number): Promise<ServiceRequest | undefined> {
-    const [item] = await db.select().from(serviceRequests).where(eq(serviceRequests.id, id));
-    return item;
-  }
-
-  async createServiceRequest(data: InsertServiceRequest): Promise<ServiceRequest> {
-    const [item] = await db.insert(serviceRequests).values(data).returning();
-    return item;
-  }
-
-  async updateServiceRequest(id: number, data: Partial<ServiceRequest>): Promise<ServiceRequest | undefined> {
-    const [item] = await db.update(serviceRequests)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(serviceRequests.id, id))
-      .returning();
-    return item;
-  }
-
   async getPasswordResetRequests(): Promise<PasswordResetRequest[]> {
     return db.select().from(passwordResetRequests).orderBy(desc(passwordResetRequests.createdAt));
   }
@@ -947,4 +921,4 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage: IStorage = process.env.DATABASE_URL ? new DatabaseStorage() : new SqliteStorage();

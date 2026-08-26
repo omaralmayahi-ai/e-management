@@ -1,5 +1,5 @@
 import { useRef, useMemo, useState, useEffect, useCallback } from "react";
-import ReactQuill, { Quill } from "react-quill";
+import { Quill } from "react-quill";
 import "react-quill/dist/quill.snow.css";
 // quill1-table registers Table/TR/TD blots so cells survive Quill's normalization
 // and provides handlers for add/remove/merge/split that work via the toolbar module.
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { authFetch } from "@/lib/queryClient";
 import {
   ArrowUpToLine,
   ArrowDownToLine,
@@ -108,8 +109,101 @@ let tableModuleRegistration:
 function ensureTableModuleRegistered() {
   if (tableModuleRegistration.state !== "pending") return tableModuleRegistration;
   try {
-    TableModuleApi.register();
+    // 1. Run TableModule.register once with try-catch so all blot classes are instantiated
+    try {
+      TableModuleApi.register();
+    } catch {
+      // Ignore if initial register encountered uninitialized Parchment state
+    }
+
+    // 2. Fetch the registered blots from Quill
+    const TableBlot = Quill.import("formats/table") as any;
+    const TDBlot = Quill.import("formats/td") as any;
+    const TRBlot = Quill.import("formats/tr") as any;
+    const ContainBlot = Quill.import("formats/contain") as any;
+    const Container = Quill.import("blots/container") as any;
+    const Block = Quill.import("blots/block") as any;
+
+    // 3. Patch TableBlot.create safely preserving Parchment blot bindings
+    if (TableBlot) {
+      const origTableCreate = TableBlot.create;
+      TableBlot.create = function (value?: any) {
+        const str = typeof value === "string" ? value : (value ? String(value) : "");
+        const parts = str ? str.split("|") : [];
+        const tableId = parts[0] || ("tbl_" + Math.random().toString(36).substring(2, 9));
+        const hideBorder = parts[1] === "true";
+        const safeVal = `${tableId}|${hideBorder}`;
+        let node: HTMLElement;
+        try {
+          if (typeof origTableCreate === "function" && origTableCreate !== TableBlot.create) {
+            node = origTableCreate.call(this, safeVal);
+          } else if (Container && typeof Container.create === "function") {
+            node = Container.create.call(this, "table");
+          } else {
+            node = document.createElement("table");
+          }
+        } catch {
+          node = Container ? Container.create.call(this, "table") : document.createElement("table");
+        }
+        node.setAttribute("table_id", tableId);
+        if (hideBorder) node.classList.add("ql-editor__table--hideBorder");
+        return node;
+      };
+    }
+
+    // 4. Patch TDBlot.create safely preserving Parchment blot bindings
+    if (TDBlot) {
+      const origTdCreate = TDBlot.create;
+      TDBlot.create = function (value?: any) {
+        const str = typeof value === "string" ? value : (value ? String(value) : "");
+        const r = str ? str.split("|") : [];
+        const tableId = r[0] || ("tbl_" + Math.random().toString(36).substring(2, 9));
+        const rowId = r[1] || ("row_" + Math.random().toString(36).substring(2, 9));
+        const cellId = r[2] || ("c_" + Math.random().toString(36).substring(2, 9));
+        const mergeId = r[3] && r[3] !== "undefined" && r[3] !== "null" ? r[3] : "";
+        const colspan = r[4] && r[4] !== "undefined" && r[4] !== "null" ? r[4] : "";
+        const rowspan = r[5] && r[5] !== "undefined" && r[5] !== "null" ? r[5] : "";
+        const hideBorder = r[6] && r[6] !== "undefined" && r[6] !== "null" ? r[6] : "";
+        const safeVal = [tableId, rowId, cellId, mergeId, colspan, rowspan, hideBorder].join("|");
+        let node: HTMLElement;
+        try {
+          if (typeof origTdCreate === "function" && origTdCreate !== TDBlot.create) {
+            node = origTdCreate.call(this, safeVal);
+          } else if (Block && typeof Block.create === "function") {
+            node = Block.create.call(this, "td");
+          } else {
+            node = document.createElement("td");
+          }
+        } catch {
+          node = Block ? Block.create.call(this, "td") : document.createElement("td");
+        }
+        node.setAttribute("table_id", tableId);
+        node.setAttribute("row_id", rowId);
+        node.setAttribute("cell_id", cellId);
+        if (mergeId) node.setAttribute("merge_id", mergeId);
+        if (colspan) node.setAttribute("colspan", colspan);
+        if (rowspan) node.setAttribute("rowspan", rowspan);
+        if (hideBorder) node.setAttribute("hide_border", hideBorder);
+        return node;
+      };
+    }
+
+    // 5. Override TableModule.register so that when Quill's module loader invokes it,
+    // it always registers our hardened, patched blots instead of the unpatched originals.
+    (TableModule as any).register = function () {
+      if (TDBlot) Quill.register(TDBlot, true);
+      if (TRBlot) Quill.register(TRBlot, true);
+      if (TableBlot) Quill.register(TableBlot, true);
+      if (ContainBlot) Quill.register(ContainBlot, true);
+    };
+
+    // 6. Explicitly register our patched blots and the table module
+    if (TDBlot) Quill.register(TDBlot, true);
+    if (TRBlot) Quill.register(TRBlot, true);
+    if (TableBlot) Quill.register(TableBlot, true);
+    if (ContainBlot) Quill.register(ContainBlot, true);
     Quill.register("modules/table", TableModule, true);
+
     tableModuleRegistration = { state: "ok" };
   } catch (error) {
     tableModuleRegistration = { state: "failed", error };
@@ -131,7 +225,9 @@ export default function RichTextEditor({
   minHeight = "200px",
   testId,
 }: RichTextEditorProps) {
-  const quillRef = useRef<ReactQuill>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<QuillType | null>(null);
+  const isInternalChangeRef = useRef(false);
   const { toast } = useToast();
 
   // Selection captured the moment the user clicks a toolbar button. The
@@ -153,7 +249,7 @@ export default function RichTextEditor({
   const toolbarId = useMemo(() => `rte-toolbar-${++toolbarCounter}`, []);
 
   const captureSelection = useCallback(() => {
-    const editor = quillRef.current?.getEditor();
+    const editor = editorRef.current;
     if (!editor) {
       savedRangeRef.current = null;
       return;
@@ -165,7 +261,7 @@ export default function RichTextEditor({
   }, []);
 
   const restoreSelectionForInsertion = useCallback((): RangeStatic => {
-    const editor = quillRef.current?.getEditor();
+    const editor = editorRef.current;
     if (!editor) return { index: 0, length: 0 };
     const saved = savedRangeRef.current;
     if (saved) {
@@ -179,7 +275,7 @@ export default function RichTextEditor({
   }, []);
 
   const insertAtCursor = (html: string) => {
-    const editor = quillRef.current?.getEditor();
+    const editor = editorRef.current;
     if (!editor) return;
     const range = restoreSelectionForInsertion();
     editor.clipboard.dangerouslyPasteHTML(range.index, html, "user");
@@ -189,7 +285,7 @@ export default function RichTextEditor({
 
   const callTableAction = useCallback(
     (action: TableActionValue): boolean => {
-      const editor = quillRef.current?.getEditor();
+      const editor = editorRef.current;
       if (!editor) return false;
 
       if (tableModuleRegistration.state !== "ok") {
@@ -237,11 +333,19 @@ export default function RichTextEditor({
       toolbar: {
         container: `#${toolbarId}`,
         handlers: {
-          // The quill1-table module overwrites this `table` handler at
-          // construction time. Our handler here only runs if the module
-          // failed to register — in that case open the dialog so the user
-          // sees a fallback path (insertion will then surface the error).
           table: () => {
+            captureSelection();
+            setRows("3");
+            setCols("3");
+            setTableDialogOpen(true);
+          },
+          "table-insert": () => {
+            captureSelection();
+            setRows("3");
+            setCols("3");
+            setTableDialogOpen(true);
+          },
+          tableInsert: () => {
             captureSelection();
             setRows("3");
             setCols("3");
@@ -253,7 +357,16 @@ export default function RichTextEditor({
           },
           customLink: () => {
             captureSelection();
-            const editor = quillRef.current?.getEditor();
+            const editor = editorRef.current;
+            const sel = savedRangeRef.current;
+            const selText = sel && sel.length > 0 && editor ? editor.getText(sel.index, sel.length) : "";
+            setLinkText(selText);
+            setLinkUrl("");
+            setLinkDialogOpen(true);
+          },
+          "custom-link": () => {
+            captureSelection();
+            const editor = editorRef.current;
             const sel = savedRangeRef.current;
             const selText = sel && sel.length > 0 && editor ? editor.getText(sel.index, sel.length) : "";
             setLinkText(selText);
@@ -265,11 +378,20 @@ export default function RichTextEditor({
             setImageUrl("");
             setImageDialogOpen(true);
           },
+          "custom-image": () => {
+            captureSelection();
+            setImageUrl("");
+            setImageDialogOpen(true);
+          },
           hr: () => {
             captureSelection();
             insertAtCursor('<hr style="border:0;border-top:1px solid #999;margin:8px 0"/><p><br/></p>');
           },
           pageBreak: () => {
+            captureSelection();
+            insertAtCursor('<div style="page-break-after:always"></div><p><br/></p>');
+          },
+          "page-break": () => {
             captureSelection();
             insertAtCursor('<div style="page-break-after:always"></div><p><br/></p>');
           },
@@ -333,7 +455,7 @@ export default function RichTextEditor({
   const insertTable = () => {
     const r = Math.min(Math.max(parseInt(rows) || 3, 1), 20);
     const c = Math.min(Math.max(parseInt(cols) || 3, 1), 10);
-    const editor = quillRef.current?.getEditor();
+    const editor = editorRef.current;
     if (!editor) {
       setTableDialogOpen(false);
       return;
@@ -402,10 +524,9 @@ export default function RichTextEditor({
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/uploads/inline-image", {
+      const res = await authFetch("/api/uploads/inline-image", {
         method: "POST",
         body: fd,
-        credentials: "include",
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({} as any));
@@ -425,7 +546,7 @@ export default function RichTextEditor({
   // Move the editor's caret to the cell that was right-clicked so subsequent
   // table actions (which use the current selection) target the right cell.
   const focusCellAtPoint = useCallback((cell: HTMLTableCellElement, x: number, y: number) => {
-    const editor = quillRef.current?.getEditor();
+    const editor = editorRef.current;
     if (!editor) return;
 
     // caretRangeFromPoint is the WebKit/Blink API; not in the standard DOM
@@ -474,17 +595,39 @@ export default function RichTextEditor({
     }
   }, []);
 
-  // Attach contextmenu listener to editor's contenteditable area
+  // Initialize Quill editor directly on mount
   useEffect(() => {
-    const editor = quillRef.current?.getEditor();
-    if (!editor) return;
-    const root = editor.root;
-    const handler = (e: MouseEvent) => {
+    if (!editorContainerRef.current) return;
+    const editorDiv = document.createElement("div");
+    editorContainerRef.current.innerHTML = "";
+    editorContainerRef.current.appendChild(editorDiv);
+
+    const quill = new Quill(editorDiv, {
+      theme: "snow",
+      modules,
+      placeholder: placeholder || "",
+    });
+    editorRef.current = quill;
+
+    if (value) {
+      isInternalChangeRef.current = true;
+      quill.clipboard.dangerouslyPasteHTML(0, value, "silent");
+      isInternalChangeRef.current = false;
+    }
+
+    const handleTextChange = () => {
+      if (isInternalChangeRef.current) return;
+      const html = quill.root.innerHTML;
+      const cleanHtml = html === "<p><br></p>" ? "" : html;
+      onChange(cleanHtml);
+    };
+
+    quill.on("text-change", handleTextChange);
+
+    const root = quill.root;
+    const contextMenuHandler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const cell = target.closest("td, th") as HTMLTableCellElement | null;
-      // Only intercept right-clicks inside table cells. Outside cells we let
-      // the browser's native context menu through (spellcheck, paste, etc.)
-      // — users can still insert a new table via the toolbar button.
       if (!cell || !root.contains(cell)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -495,11 +638,35 @@ export default function RichTextEditor({
       focusCellAtPoint(cell, e.clientX, e.clientY);
       setTableMenu({ x: Math.max(8, x), y: Math.max(8, y) });
     };
-    root.addEventListener("contextmenu", handler);
+    root.addEventListener("contextmenu", contextMenuHandler);
+
     return () => {
-      root.removeEventListener("contextmenu", handler);
+      quill.off("text-change", handleTextChange);
+      root.removeEventListener("contextmenu", contextMenuHandler);
+      editorRef.current = null;
+      if (editorContainerRef.current) {
+        editorContainerRef.current.innerHTML = "";
+      }
     };
-  }, [focusCellAtPoint]);
+  }, [modules, placeholder, onChange, focusCellAtPoint]);
+
+  // Sync external value updates
+  useEffect(() => {
+    const quill = editorRef.current;
+    if (!quill) return;
+    const currentHtml = quill.root.innerHTML;
+    const cleanCurrent = currentHtml === "<p><br></p>" ? "" : currentHtml;
+    const cleanValue = value === "<p><br></p>" ? "" : (value || "");
+    if (cleanValue !== cleanCurrent) {
+      isInternalChangeRef.current = true;
+      const sel = quill.getSelection();
+      quill.root.innerHTML = cleanValue;
+      if (sel) {
+        quill.setSelection(sel.index, sel.length, "silent");
+      }
+      isInternalChangeRef.current = false;
+    }
+  }, [value]);
 
   // Close menu on outside click / Escape
   useEffect(() => {
@@ -652,15 +819,11 @@ export default function RichTextEditor({
         </span>
       </div>
 
-      <ReactQuill
-        ref={quillRef}
-        theme="snow"
-        value={value}
-        onChange={onChange}
-        modules={modules}
-        placeholder={placeholder}
-        style={{ minHeight }}
+      <div
+        ref={editorContainerRef}
         data-testid={testId}
+        style={{ minHeight }}
+        className="rich-text-editor-container"
       />
 
       {tableMenu && (

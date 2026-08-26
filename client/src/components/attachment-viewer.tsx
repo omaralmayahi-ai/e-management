@@ -6,6 +6,7 @@ import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import * as XLSX from "xlsx";
 import mammoth from "mammoth";
 import DOMPurify from "dompurify";
+import { authFetch } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import {
   ChevronLeft,
@@ -271,7 +272,7 @@ function TextView({ url, height, className, name }: { url: string; height: strin
 
   useEffect(() => {
     setLoading(true);
-    fetch(url, { credentials: "include" })
+    authFetch(url)
       .then((r) => {
         if (!r.ok) throw new Error("فشل تحميل الملف");
         return r.text();
@@ -313,7 +314,7 @@ function DocxView({ url, height, className }: { url: string; height: string; cla
 
   useEffect(() => {
     setLoading(true);
-    fetch(url, { credentials: "include" })
+    authFetch(url)
       .then((r) => {
         if (!r.ok) throw new Error("فشل تحميل المستند");
         return r.arrayBuffer();
@@ -363,7 +364,7 @@ function XlsxView({ url, height, className }: { url: string; height: string; cla
 
   useEffect(() => {
     setLoading(true);
-    fetch(url, { credentials: "include" })
+    authFetch(url)
       .then((r) => {
         if (!r.ok) throw new Error("فشل تحميل الجدول");
         return r.arrayBuffer();

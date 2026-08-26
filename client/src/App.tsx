@@ -15,19 +15,19 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { KeyRound, Eye, EyeOff, Loader2 } from "lucide-react";
+import { applyAppearanceToDOM } from "@/lib/theme-utils";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import CorrespondencePage from "@/pages/correspondence";
 import LeaveRequestsPage from "@/pages/leave-requests";
-import ServiceRequestsPage from "@/pages/service-requests";
 import DepartmentsPage from "@/pages/departments";
 import EmployeesPage from "@/pages/employees";
 import SettingsPage from "@/pages/settings";
 import NotificationsPage from "@/pages/notifications";
 import FlowTemplatesPage from "@/pages/flow-templates";
 
-function ProtectedRoute({ component: Component, accessKey }: { component: React.ComponentType; accessKey?: "canAccessCorrespondence" | "canAccessLeaveRequests" | "canAccessServiceRequests" }) {
+function ProtectedRoute({ component: Component, accessKey }: { component: React.ComponentType; accessKey?: "canAccessCorrespondence" | "canAccessLeaveRequests" }) {
   const { user } = useAuth();
   const isCentralMail = user?.role === "central_mail";
   if (accessKey && user?.role !== "admin") {
@@ -47,7 +47,6 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/correspondence">{() => <ProtectedRoute component={CorrespondencePage} accessKey="canAccessCorrespondence" />}</Route>
       <Route path="/leave-requests">{() => <ProtectedRoute component={LeaveRequestsPage} accessKey="canAccessLeaveRequests" />}</Route>
-      <Route path="/service-requests">{() => <ProtectedRoute component={ServiceRequestsPage} accessKey="canAccessServiceRequests" />}</Route>
       <Route path="/departments" component={DepartmentsPage} />
       <Route path="/employees" component={EmployeesPage} />
       <Route path="/settings" component={SettingsPage} />
@@ -151,13 +150,21 @@ function ThemeApplier() {
 
   useEffect(() => {
     const userTheme = localStorage.getItem("userTheme");
-    const theme = userTheme || settings?.theme || "blue";
-    if (theme === "blue") {
-      document.documentElement.removeAttribute("data-theme");
-    } else {
-      document.documentElement.setAttribute("data-theme", theme);
-    }
-  }, [settings?.theme]);
+    const userFont = localStorage.getItem("userFont");
+    const userSidebarStyle = localStorage.getItem("userSidebarStyle") as any;
+    const userRadius = localStorage.getItem("userRadius") as any;
+    const userCustomPrimary = localStorage.getItem("userCustomPrimary");
+    const userCustomAccent = localStorage.getItem("userCustomAccent");
+
+    applyAppearanceToDOM({
+      theme: userTheme || settings?.theme || "crimson",
+      fontFamily: userFont || settings?.fontFamily || "cairo",
+      sidebarStyle: userSidebarStyle || (settings?.sidebarStyle as any) || "primary",
+      borderRadius: userRadius || (settings?.borderRadius as any) || "md",
+      customPrimary: userCustomPrimary || settings?.customPrimary || undefined,
+      customAccent: userCustomAccent || settings?.customAccent || undefined,
+    });
+  }, [settings]);
 
   useEffect(() => {
     const darkMode = localStorage.getItem("darkMode");

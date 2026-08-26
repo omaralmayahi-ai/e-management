@@ -9,7 +9,6 @@ import { Link } from "wouter";
 import {
   Mail,
   CalendarDays,
-  Wrench,
   ArrowUpLeft,
   ArrowDownRight,
   Send,
@@ -30,7 +29,7 @@ import {
   FileSignature,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import type { Correspondence, LeaveRequest, ServiceRequest } from "@shared/schema";
+import type { Correspondence, LeaveRequest } from "@shared/schema";
 import {
   PieChart,
   Pie,
@@ -200,7 +199,6 @@ export default function Dashboard() {
   const isCentralMail = me?.role === "central_mail";
   const showCorrespondence = isAdmin || isCentralMail || me?.canAccessCorrespondence;
   const showLeave = !isCentralMail && (isAdmin || me?.canAccessLeaveRequests);
-  const showServices = !isCentralMail && (isAdmin || me?.canAccessServiceRequests);
 
   const { data: correspondence, isLoading: loadingCorr } = useQuery<Correspondence[]>({
     queryKey: ["/api/correspondence"],
@@ -210,16 +208,12 @@ export default function Dashboard() {
     queryKey: ["/api/leave-requests"],
     enabled: showLeave,
   });
-  const { data: serviceRequests, isLoading: loadingSvc } = useQuery<ServiceRequest[]>({
-    queryKey: ["/api/service-requests"],
-    enabled: showServices,
-  });
   const { data: authorizedReceivers } = useQuery<any[]>({
     queryKey: ["/api/employees/authorized-receivers"],
     enabled: isCentralMail,
   });
 
-  const isLoading = (showCorrespondence && loadingCorr) || (showLeave && loadingLeave) || (showServices && loadingSvc);
+  const isLoading = (showCorrespondence && loadingCorr) || (showLeave && loadingLeave);
 
   const corrs = correspondence || [];
 
@@ -265,7 +259,6 @@ export default function Dashboard() {
 
   const pendingLeaves = leaveRequests?.filter(l => l.status === "pending").length || 0;
   const myLeaves = leaveRequests?.filter(l => (l as any).employeeId === me?.id).length || 0;
-  const pendingServices = serviceRequests?.filter(s => s.status === "pending" || s.status === "in_progress").length || 0;
 
   const centralMailItems = isCentralMail ? corrs.filter(c => c.type === "external_incoming" && c.centralMailAssignedById === me?.id) : [];
   const cmTotalEntered = centralMailItems.length;
@@ -479,9 +472,6 @@ export default function Dashboard() {
         {showLeave && (
           <StatCard icon={CalendarDays} title="طلبات الإجازة" value={isAdmin ? pendingLeaves : myLeaves} subtitle={isAdmin ? "طلب قيد الانتظار" : "إجمالي طلباتي"} color="bg-chart-5/10 text-chart-5" testId="stat-leaves" />
         )}
-        {showServices && (
-          <StatCard icon={Wrench} title="طلبات الخدمات" value={pendingServices} subtitle="طلب نشط" color="bg-chart-3/10 text-chart-3" testId="stat-services" />
-        )}
       </div>
 
       {showCorrespondence && corrs.length > 0 && (
@@ -569,65 +559,34 @@ export default function Dashboard() {
         <AdminOrgSection corrs={corrs} />
       )}
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        {showCorrespondence && (
-          <Card className="p-5">
-            <div className="flex items-center justify-between gap-1 mb-4">
-              <h2 className="font-semibold flex items-center gap-2">
-                <Mail className="w-4 h-4 text-primary" /> آخر المراسلات
-              </h2>
-              <Badge variant="secondary" className="text-xs">{corrs.length}</Badge>
-            </div>
-            <div className="space-y-2">
-              {corrs.slice(0, 5).map(c => (
-                <RecentItem
-                  key={c.id}
-                  icon={c.type?.includes("incoming") ? ArrowDownRight : ArrowUpLeft}
-                  title={c.subject}
-                  subtitle={`${c.referenceNumber || ""} - ${typeLabels[c.type] || c.type}`}
-                  status={statusLabels[c.status || "draft"]}
-                  statusColor={statusColors[c.status || "draft"]}
-                  testId={`recent-corr-${c.id}`}
-                />
-              ))}
-              {corrs.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  <Mail className="w-8 h-8 mx-auto mb-2 opacity-40" /> لا توجد مراسلات بعد
-                </div>
-              )}
-            </div>
-          </Card>
-        )}
-
-        {showServices && (
-          <Card className="p-5">
-            <div className="flex items-center justify-between gap-1 mb-4">
-              <h2 className="font-semibold flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-primary" /> آخر طلبات الخدمات
-              </h2>
-              <Badge variant="secondary" className="text-xs">{serviceRequests?.length || 0}</Badge>
-            </div>
-            <div className="space-y-2">
-              {serviceRequests?.slice(0, 5).map(s => (
-                <RecentItem
-                  key={s.id}
-                  icon={Wrench}
-                  title={s.title}
-                  subtitle={s.requestNumber}
-                  status={statusLabels[s.status || "pending"]}
-                  statusColor={statusColors[s.status || "pending"]}
-                  testId={`recent-svc-${s.id}`}
-                />
-              ))}
-              {(!serviceRequests || serviceRequests.length === 0) && (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  <Wrench className="w-8 h-8 mx-auto mb-2 opacity-40" /> لا توجد طلبات خدمات بعد
-                </div>
-              )}
-            </div>
-          </Card>
-        )}
-      </div>
+      {showCorrespondence && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-1 mb-4">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Mail className="w-4 h-4 text-primary" /> آخر المراسلات
+            </h2>
+            <Badge variant="secondary" className="text-xs">{corrs.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {corrs.slice(0, 5).map(c => (
+              <RecentItem
+                key={c.id}
+                icon={c.type?.includes("incoming") ? ArrowDownRight : ArrowUpLeft}
+                title={c.subject}
+                subtitle={`${c.referenceNumber || ""} - ${typeLabels[c.type] || c.type}`}
+                status={statusLabels[c.status || "draft"]}
+                statusColor={statusColors[c.status || "draft"]}
+                testId={`recent-corr-${c.id}`}
+              />
+            ))}
+            {corrs.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <Mail className="w-8 h-8 mx-auto mb-2 opacity-40" /> لا توجد مراسلات بعد
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

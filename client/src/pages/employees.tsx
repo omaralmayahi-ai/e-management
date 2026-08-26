@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, authFetch } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -235,7 +235,6 @@ function EmployeeFormDialog({ employee, departments, allPermissions, onClose }: 
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [canAccessCorrespondence, setCanAccessCorrespondence] = useState(employee?.canAccessCorrespondence !== false);
   const [canAccessLeaveRequests, setCanAccessLeaveRequests] = useState(employee?.canAccessLeaveRequests !== false);
-  const [canAccessServiceRequests, setCanAccessServiceRequests] = useState(employee?.canAccessServiceRequests !== false);
   const [canReceiveExternalIncoming, setCanReceiveExternalIncoming] = useState(employee?.canReceiveExternalIncoming === true);
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [signaturePreview, setSignaturePreview] = useState<string | null>(employee?.signatureUrl || null);
@@ -245,7 +244,7 @@ function EmployeeFormDialog({ employee, departments, allPermissions, onClose }: 
     queryKey: ["/api/employees", employee?.id, "permissions"],
     queryFn: async () => {
       if (!employee?.id) return [];
-      const res = await fetch(`/api/employees/${employee.id}/permissions`, { credentials: "include" });
+      const res = await authFetch(`/api/employees/${employee.id}/permissions`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -288,7 +287,6 @@ function EmployeeFormDialog({ employee, departments, allPermissions, onClose }: 
         permissionKeys: Array.from(selectedPermKeys),
         canAccessCorrespondence: role === "central_mail" ? true : canAccessCorrespondence,
         canAccessLeaveRequests: role === "central_mail" ? false : canAccessLeaveRequests,
-        canAccessServiceRequests: role === "central_mail" ? false : canAccessServiceRequests,
         canReceiveExternalIncoming: (role === "officer" || role === "admin") ? canReceiveExternalIncoming : false,
       };
       if (!isEdit || password) {
@@ -308,7 +306,7 @@ function EmployeeFormDialog({ employee, departments, allPermissions, onClose }: 
         try {
           const formData = new FormData();
           formData.append("signature", signatureFile);
-          await fetch(`/api/employees/${data.id}/signature`, { method: "POST", body: formData, credentials: "include" });
+          await authFetch(`/api/employees/${data.id}/signature`, { method: "POST", body: formData });
         } catch (e) {
           console.error("Failed to upload signature:", e);
         }
@@ -441,7 +439,7 @@ function EmployeeFormDialog({ employee, departments, allPermissions, onClose }: 
       {role !== "admin" && role !== "central_mail" && (
         <div className="border-t pt-4 space-y-3">
           <Label className="text-sm font-semibold">صلاحيات الوصول للوحدات</Label>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <label className="flex items-center gap-2 cursor-pointer select-none" data-testid="toggle-access-correspondence">
               <input
                 type="checkbox"
@@ -459,15 +457,6 @@ function EmployeeFormDialog({ employee, departments, allPermissions, onClose }: 
                 className="w-4 h-4 rounded border-input accent-primary"
               />
               <span className="text-sm">الإجازات</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer select-none" data-testid="toggle-access-services">
-              <input
-                type="checkbox"
-                checked={canAccessServiceRequests}
-                onChange={e => setCanAccessServiceRequests(e.target.checked)}
-                className="w-4 h-4 rounded border-input accent-primary"
-              />
-              <span className="text-sm">الخدمات</span>
             </label>
           </div>
           <p className="text-xs text-muted-foreground">تحكم في الوحدات التي يمكن للمستخدم الوصول إليها</p>

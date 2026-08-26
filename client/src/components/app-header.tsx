@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, authFetch } from "@/lib/queryClient";
 import {
   Bell,
   LogOut,
@@ -68,11 +68,14 @@ const roleLabels: Record<string, string> = {
 };
 
 const themeOptions = [
-  { value: "blue", label: "أزرق", color: "hsl(210 82% 42%)" },
-  { value: "teal", label: "أخضر مائي", color: "hsl(178 72% 38%)" },
-  { value: "green", label: "أخضر", color: "hsl(152 62% 36%)" },
-  { value: "purple", label: "بنفسجي", color: "hsl(262 68% 48%)" },
-  { value: "warm", label: "دافئ", color: "hsl(24 78% 42%)" },
+  { value: "crimson", label: "أحمر داكن / خمري ملكي", color: "#881337" },
+  { value: "royal-blue", label: "أزرق ملكي سيادي", color: "#1E3A8A" },
+  { value: "emerald", label: "أخضر زمردي", color: "#065F46" },
+  { value: "deep-purple", label: "بنفسجي غامق", color: "#581C87" },
+  { value: "charcoal", label: "رمادي احترافي", color: "#334155" },
+  { value: "warm-orange", label: "برتقالي دافئ", color: "#C2410C" },
+  { value: "azure", label: "أزرق أردوازي", color: "#0369A1" },
+  { value: "teal", label: "أخضر مائي", color: "#0D9488" },
 ];
 
 export function AppHeader() {
@@ -147,8 +150,11 @@ export function AppHeader() {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("signature", file);
-      const res = await fetch(`/api/employees/${user?.id}/signature`, { method: "POST", body: formData, credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
+      const res = await authFetch(`/api/employees/${user?.id}/signature`, { method: "POST", body: formData });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -156,15 +162,14 @@ export function AppHeader() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       setSigDialogOpen(false);
     },
-    onError: () => {
-      toast({ title: "خطأ", description: "حدث خطأ في رفع التوقيع", variant: "destructive" });
+    onError: (err: any) => {
+      toast({ title: "خطأ", description: err.message || "حدث خطأ في رفع التوقيع", variant: "destructive" });
     },
   });
 
   const deleteSignatureMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/employees/${user?.id}/signature`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
+      const res = await apiRequest("DELETE", `/api/employees/${user?.id}/signature`);
       return res.json();
     },
     onSuccess: () => {
