@@ -3,8 +3,6 @@ import { pgTable, text, varchar, integer, timestamp, boolean, pgEnum, serial } f
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export * from "./models/auth";
-
 export const departmentLevelEnum = pgEnum("department_level", [
   "general_manager",
   "assistant",

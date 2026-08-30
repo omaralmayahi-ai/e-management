@@ -10,6 +10,7 @@ export interface AuthUser {
   departmentId?: number;
   department?: { id: number; name: string; level: string } | null;
   jobTitle?: string;
+  leaveBalance?: number;
   mustChangePassword?: boolean;
   canAccessCorrespondence?: boolean;
   canAccessLeaveRequests?: boolean;

@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, requirePasswordChanged } from "./replit_integrations/auth";
+import { sanitizeEmployee, sanitizeEmployees } from "./employeeSanitizer";
+import { isUserOnline, getUserActivity } from "./userActivity";
 import { seedDatabase } from "./seed";
 import { sanitizeHtmlContent } from "./htmlSanitizer";
 import { insertDepartmentSchema, insertCorrespondenceSchema, insertLeaveRequestSchema, insertWorkflowEventSchema, insertUserPermissionSchema } from "@shared/schema";
@@ -267,6 +269,7 @@ const correspondenceUpdateSchema = z.object({
 
 const leaveStatusUpdateSchema = z.object({
   status: z.enum(validLeaveStatuses),
+  notes: z.string().optional(),
 });
 
 async function migratePermissions() {
@@ -336,6 +339,9 @@ export async function registerRoutes(
   await setupAuth(app);
   registerAuthRoutes(app);
 
+  // Enforce password change on all protected API routes (excluding auth endpoints above)
+  app.use(requirePasswordChanged);
+
   await seedDatabase();
   await migratePermissions();
 
@@ -364,7 +370,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "لم يتم العثور على سجل الموظف" });
       }
       const dept = employee.departmentId ? await storage.getDepartment(employee.departmentId) : null;
-      res.json({ ...employee, department: dept, passwordHash: undefined });
+      res.json({ ...sanitizeEmployee(employee), department: dept });
     } catch (error) {
       console.error("Error fetching current employee:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -456,7 +462,7 @@ export async function registerRoutes(
   app.get("/api/employees", isAuthenticated, async (_req, res) => {
     try {
       const items = await storage.getEmployees();
-      res.json(items);
+      res.json(sanitizeEmployees(items));
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في جلب الموظفين" });
     }
@@ -479,7 +485,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id as string);
       const emp = await storage.getEmployee(id);
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود" });
-      res.json(emp);
+      res.json(sanitizeEmployee(emp));
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
     }
@@ -547,7 +553,7 @@ export async function registerRoutes(
         details: `إنشاء حساب: ${emp.fullName}`,
       });
 
-      res.status(201).json(emp);
+      res.status(201).json(sanitizeEmployee(emp));
     } catch (error) {
       console.error("Error creating employee:", error);
       res.status(500).json({ message: "حدث خطأ في إنشاء الحساب" });
@@ -601,7 +607,7 @@ export async function registerRoutes(
         details: `تحديث حساب: ${emp.fullName}`,
       });
 
-      res.json(emp);
+      res.json(sanitizeEmployee(emp));
     } catch (error) {
       console.error("Error updating employee:", error);
       res.status(500).json({ message: "حدث خطأ في تحديث الحساب" });
@@ -2007,11 +2013,113 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/leave-requests", isAuthenticated, async (_req, res) => {
+  const VALID_LEAVE_TRANSITIONS: Record<string, string[]> = {
+    pending: ["approved_by_direct", "rejected", "cancelled"],
+    approved_by_direct: ["approved_by_section", "rejected", "cancelled"],
+    approved_by_section: ["approved_by_hr", "rejected", "cancelled"],
+    approved_by_hr: ["approved", "rejected", "cancelled"],
+    approved: [],
+    rejected: [],
+    cancelled: [],
+  };
+
+  const leaveStatusArabicLabels: Record<string, string> = {
+    pending: "قيد الانتظار",
+    approved_by_direct: "موافقة المسؤول المباشر",
+    approved_by_section: "موافقة رئيس القسم",
+    approved_by_hr: "موافقة الموارد البشرية",
+    approved: "معتمد نهائياً",
+    rejected: "مرفوض",
+    cancelled: "ملغي",
+  };
+
+  async function notifyLeaveWorkflow(nextStatus: string, targetEmployee: any, leaveReq: any, actor: any) {
     try {
-      const items = await storage.getLeaveRequests();
-      res.json(items);
+      const meta: NotificationMeta = { category: "personal_requests", relatedEntityId: leaveReq.id, relatedEntityType: "leave_request" };
+      const allEmployees = await storage.getEmployees();
+
+      if (nextStatus === "pending") {
+        if (targetEmployee.departmentId) {
+          const deptOfficers = allEmployees.filter(e => e.isActive && e.role === "officer" && e.departmentId === targetEmployee.departmentId && e.id !== targetEmployee.id);
+          for (const off of deptOfficers) {
+            await notifyEmployee(off.id, `طلب إجازة جديد بانتظار موافقتك من الموظف: ${targetEmployee.fullName}`, meta);
+          }
+        }
+        const admins = allEmployees.filter(e => e.isActive && e.role === "admin" && e.id !== targetEmployee.id);
+        for (const adm of admins) {
+          await notifyEmployee(adm.id, `طلب إجازة جديد من الموظف: ${targetEmployee.fullName} (${leaveReq.daysCount || 1} يوم)`, meta);
+        }
+      } else if (nextStatus === "approved_by_direct") {
+        if (targetEmployee.departmentId) {
+          const deptOfficers = allEmployees.filter(e => e.isActive && (e.role === "officer" || e.role === "section_head") && e.departmentId === targetEmployee.departmentId && e.id !== actor.id);
+          for (const off of deptOfficers) {
+            await notifyEmployee(off.id, `طلب إجازة للموظف ${targetEmployee.fullName} بانتظار موافقة رئيس القسم`, meta);
+          }
+        }
+        const admins = allEmployees.filter(e => e.isActive && e.role === "admin" && e.id !== actor.id);
+        for (const adm of admins) {
+          await notifyEmployee(adm.id, `طلب إجازة للموظف ${targetEmployee.fullName} بانتظار موافقة رئيس القسم`, meta);
+        }
+      } else if (nextStatus === "approved_by_section") {
+        const allDepts = await storage.getDepartments();
+        const hrDept = allDepts.find(d => d.name.includes("موارد بشرية") || (d.nameEn && d.nameEn.toLowerCase().includes("human resources")) || d.code === "HR");
+        if (hrDept) {
+          const hrStaff = allEmployees.filter(e => e.isActive && e.departmentId === hrDept.id && e.id !== actor.id);
+          for (const hr of hrStaff) {
+            await notifyEmployee(hr.id, `طلب إجازة للموظف ${targetEmployee.fullName} بانتظار موافقة الموارد البشرية`, meta);
+          }
+        }
+        const admins = allEmployees.filter(e => e.isActive && e.role === "admin" && e.id !== actor.id);
+        for (const adm of admins) {
+          await notifyEmployee(adm.id, `طلب إجازة للموظف ${targetEmployee.fullName} بانتظار موافقة الموارد البشرية`, meta);
+        }
+      } else if (nextStatus === "approved_by_hr") {
+        const admins = allEmployees.filter(e => e.isActive && e.role === "admin" && e.id !== actor.id);
+        for (const adm of admins) {
+          await notifyEmployee(adm.id, `طلب إجازة للموظف ${targetEmployee.fullName} بانتظار الاعتماد النهائي وتحديث الرصيد`, meta);
+        }
+      }
+    } catch (err) {
+      console.error("Error sending leave workflow notification:", err);
+    }
+  }
+
+  app.get("/api/leave-requests", isAuthenticated, async (req: any, res) => {
+    try {
+      const employeeId = (req.session as any).employeeId;
+      const employee = await storage.getEmployee(employeeId);
+      if (!employee) return res.status(401).json({ message: "Unauthorized" });
+
+      const allRequests = await storage.getLeaveRequests();
+
+      // Filter based on role:
+      // admin and central_mail can see all
+      if (employee.role === "admin" || employee.role === "central_mail") {
+        return res.json(allRequests);
+      }
+
+      // officer can see requests of employees in their department
+      if (employee.role === "officer") {
+        if (!employee.departmentId) {
+          const ownRequests = allRequests.filter(r => r.employeeId === employee.id);
+          return res.json(ownRequests);
+        }
+        const allEmployees = await storage.getEmployees();
+        const deptEmployeeIds = new Set(
+          allEmployees
+            .filter(e => e.departmentId === employee.departmentId)
+            .map(e => e.id)
+        );
+        deptEmployeeIds.add(employee.id); // officer also sees own requests
+        const filtered = allRequests.filter(r => deptEmployeeIds.has(r.employeeId));
+        return res.json(filtered);
+      }
+
+      // employee (and other non-privileged roles) can only see their own requests
+      const ownRequests = allRequests.filter(r => r.employeeId === employee.id);
+      return res.json(ownRequests);
     } catch (error) {
+      console.error("Error fetching leave requests:", error);
       res.status(500).json({ message: "حدث خطأ في جلب طلبات الإجازة" });
     }
   });
@@ -2024,7 +2132,22 @@ export async function registerRoutes(
 
       const startDate = new Date(req.body.startDate);
       const endDate = new Date(req.body.endDate);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ message: "تواريخ الإجازة غير صحيحة" });
+      }
+      if (endDate < startDate) {
+        return res.status(400).json({ message: "تاريخ نهاية الإجازة لا يمكن أن يكون قبل تاريخ البداية" });
+      }
+
       const daysCount = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+      // Balance check
+      const currentBalance = employee.leaveBalance ?? 30;
+      if (currentBalance < daysCount) {
+        return res.status(400).json({
+          message: `رصيد الإجازات غير كافٍ. رصيدك المتاح (${currentBalance} يوم) أقل من الأيام المطلوبة (${daysCount} يوم)`,
+        });
+      }
 
       const data = {
         ...req.body,
@@ -2032,10 +2155,27 @@ export async function registerRoutes(
         endDate,
         daysCount,
         employeeId: employee.id,
+        status: "pending" as const,
       };
 
       const parsed = insertLeaveRequestSchema.parse(data);
       const item = await storage.createLeaveRequest(parsed);
+
+      // Audit Log
+      await storage.createAuditLog({
+        entityType: "leave_request",
+        entityId: item.id,
+        action: "create",
+        performedById: employee.id,
+        employeeId: employee.id,
+        module: "leave_requests",
+        details: `تقديم طلب إجازة (${item.leaveType}) لمدة ${item.daysCount} يوم من ${startDate.toISOString().split("T")[0]} إلى ${endDate.toISOString().split("T")[0]}${item.reason ? ` - السبب: ${item.reason}` : ""}`,
+        ipAddress: req.ip || req.socket?.remoteAddress,
+      });
+
+      // Workflow Notification
+      await notifyLeaveWorkflow("pending", employee, item, employee);
+
       res.status(201).json(item);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2049,15 +2189,115 @@ export async function registerRoutes(
   app.patch("/api/leave-requests/:id/status", isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { status } = leaveStatusUpdateSchema.parse(req.body);
+      const { status, notes } = leaveStatusUpdateSchema.parse(req.body);
 
       const employeeId = (req.session as any).employeeId;
       const employee = await storage.getEmployee(employeeId);
       if (!employee) return res.status(401).json({ message: "Unauthorized" });
-      const item = await storage.updateLeaveRequestStatus(id, status, employee.id);
+
+      const targetRequest = await storage.getLeaveRequest(id);
+      if (!targetRequest) {
+        return res.status(404).json({ message: "الطلب غير موجود" });
+      }
+
+      const currentStatus = targetRequest.status || "pending";
+
+      // Terminal state check
+      if (currentStatus === "approved" || currentStatus === "rejected" || currentStatus === "cancelled") {
+        return res.status(400).json({
+          message: `لا يمكن تعديل حالة الطلب لأنه في حالة نهائية (${leaveStatusArabicLabels[currentStatus] || currentStatus})`,
+        });
+      }
+
+      // State machine validation
+      const allowedNextStatuses = VALID_LEAVE_TRANSITIONS[currentStatus] || [];
+      if (!allowedNextStatuses.includes(status)) {
+        return res.status(400).json({
+          message: `انتقال غير صالح: لا يمكن الانتقال المباشر من (${leaveStatusArabicLabels[currentStatus] || currentStatus}) إلى (${leaveStatusArabicLabels[status] || status}). يجب اتباع تسلسل مراحل الاعتماد: موافقة المسؤول المباشر ← موافقة رئيس القسم ← موافقة الموارد البشرية ← الاعتماد النهائي.`,
+        });
+      }
+
+      // Role and Ownership checks
+      if (status === "cancelled") {
+        if (targetRequest.employeeId !== employee.id && employee.role !== "admin") {
+          return res.status(403).json({ message: "غير مسموح لك بإلغاء طلب إجازة خاص بموظف آخر" });
+        }
+      } else {
+        if (targetRequest.employeeId === employee.id && employee.role !== "admin") {
+          return res.status(403).json({ message: "غير مسموح لك بالموافقة على أو رفض طلب الإجازة الخاص بك" });
+        }
+
+        if (employee.role !== "admin") {
+          const targetEmployee = await storage.getEmployee(targetRequest.employeeId);
+          if (!targetEmployee) {
+            return res.status(404).json({ message: "الموظف صاحب الطلب غير موجود" });
+          }
+
+          if (employee.role === "officer") {
+            if (status === "approved_by_direct" || status === "approved_by_section" || status === "rejected") {
+              if (!employee.departmentId || targetEmployee.departmentId !== employee.departmentId) {
+                return res.status(403).json({ message: "غير مسموح لك بالبت في طلب إجازة لموظف خارج قسمك" });
+              }
+            }
+          } else {
+            return res.status(403).json({ message: "غير مصرح لك بتغيير حالة طلب الإجازة" });
+          }
+        }
+      }
+
+      const targetEmployee = await storage.getEmployee(targetRequest.employeeId);
+      if (!targetEmployee) {
+        return res.status(404).json({ message: "الموظف صاحب الطلب غير موجود" });
+      }
+
+      // If final approval ("approved"), check balance and deduct daysCount atomically
+      if (status === "approved") {
+        const days = targetRequest.daysCount || 0;
+        const currentBalance = targetEmployee.leaveBalance ?? 0;
+        if (currentBalance < days) {
+          return res.status(400).json({
+            message: `الرصيد غير كافٍ. رصيد الموظف المتاح (${currentBalance} يوم) أقل من الأيام المطلوبة (${days} يوم)`,
+          });
+        }
+
+        const newBalance = currentBalance - days;
+        await storage.updateEmployee(targetEmployee.id, { leaveBalance: newBalance });
+      }
+
+      const item = await storage.updateLeaveRequestStatus(id, status, employee.id, notes);
       if (!item) return res.status(404).json({ message: "الطلب غير موجود" });
+
+      // Audit Log
+      await storage.createAuditLog({
+        entityType: "leave_request",
+        entityId: item.id,
+        action: status,
+        performedById: employee.id,
+        employeeId: targetRequest.employeeId,
+        module: "leave_requests",
+        details: `تحديث حالة طلب الإجازة #${item.id} من (${leaveStatusArabicLabels[currentStatus] || currentStatus}) إلى (${leaveStatusArabicLabels[status] || status}) بواسطة ${employee.fullName}${notes ? ` - ملاحظات: ${notes}` : ""}`,
+        ipAddress: req.ip || req.socket?.remoteAddress,
+      });
+
+      // Notification to Requester
+      const notifMsg = `تم تحديث حالة طلب الإجازة الخاص بك إلى "${leaveStatusArabicLabels[status] || status}" بواسطة ${employee.fullName}${notes ? ` (ملاحظات: ${notes})` : ""}`;
+      await notifyEmployee(targetRequest.employeeId, notifMsg, {
+        category: "personal_requests",
+        relatedEntityId: item.id,
+        relatedEntityType: "leave_request",
+      });
+
+      // Notification to Next Step in workflow
+      if (status !== "approved" && status !== "rejected" && status !== "cancelled") {
+        await notifyLeaveWorkflow(status, targetEmployee, item, employee);
+      }
+
       res.json(item);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "بيانات غير صحيحة", errors: error.errors });
+      }
+      console.error("Error updating leave request status:", error);
       res.status(500).json({ message: "حدث خطأ في تحديث الطلب" });
     }
   });
@@ -3988,39 +4228,38 @@ export async function registerRoutes(
 
   app.get("/api/active-users", isAuthenticated, async (req: any, res) => {
     try {
-      const employeeId = (req.session as any).employeeId;
+      const employeeId = (req as any).employeeId || (req.session as any)?.employeeId;
       const emp = await storage.getEmployee(employeeId);
       if (!emp || emp.role !== "admin") return res.status(403).json({ message: "غير مصرح" });
-
-      const { db } = await import("./db");
-      const { sessions } = await import("@shared/models/auth");
-      const { gt } = await import("drizzle-orm");
-      const now = new Date();
-      const activeSessions = await db.select({ sess: sessions.sess }).from(sessions).where(gt(sessions.expire, now));
-      const onlineEmployeeIds = new Set<number>();
-      for (const s of activeSessions) {
-        const sess = s.sess as any;
-        if (sess?.employeeId) onlineEmployeeIds.add(sess.employeeId);
-      }
 
       const allEmployees = await storage.getEmployees();
       const allDepartments = await storage.getDepartments();
       const deptMap = new Map(allDepartments.map(d => [d.id, d.name]));
-      const users = allEmployees.map(e => ({
-        id: e.id,
-        fullName: e.fullName,
-        username: e.username,
-        role: e.role,
-        departmentId: e.departmentId,
-        departmentName: e.departmentId ? deptMap.get(e.departmentId) || null : null,
-        lastLoginAt: e.lastLoginAt,
-        lastLoginIp: e.lastLoginIp,
-        lastLoginLocation: e.lastLoginLocation,
-        isActive: e.isActive,
-        isOnline: onlineEmployeeIds.has(e.id),
-      }));
+
+      const users = allEmployees.map(e => {
+        const online = e.isActive && isUserOnline(e.id, e.lastLoginAt);
+        const activity = getUserActivity(e.id);
+        const lastLoginAt = e.lastLoginAt || (activity ? activity.lastSeenAt : null);
+        const lastLoginIp = e.lastLoginIp || (activity ? activity.ip : null);
+
+        return {
+          id: e.id,
+          fullName: e.fullName,
+          username: e.username,
+          role: e.role,
+          departmentId: e.departmentId,
+          departmentName: e.departmentId ? deptMap.get(e.departmentId) || null : null,
+          lastLoginAt,
+          lastLoginIp,
+          lastLoginLocation: e.lastLoginLocation,
+          isActive: e.isActive,
+          isOnline: online,
+        };
+      });
+
       res.json(users);
     } catch (error) {
+      console.error("Error fetching active users:", error);
       res.status(500).json({ message: "حدث خطأ" });
     }
   });

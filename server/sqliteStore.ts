@@ -16,12 +16,25 @@ export function getSqliteDb(): any {
     const dbPath = path.join(dataDir, "sqlite.db");
     try {
       sqliteDb = new DatabaseSync(dbPath);
-    } catch {
-      sqliteDb = new DatabaseSync(":memory:");
+      // Quick test to ensure file is not malformed
+      sqliteDb.exec("PRAGMA schema_version;");
+      initSchema(sqliteDb);
+      migrateSchema(sqliteDb);
+    } catch (err) {
+      console.warn("SQLite file open/init failed or corrupted, recreating fresh database:", err);
+      try {
+        if (fs.existsSync(dbPath)) {
+          fs.unlinkSync(dbPath);
+        }
+        sqliteDb = new DatabaseSync(dbPath);
+        initSchema(sqliteDb);
+        migrateSchema(sqliteDb);
+      } catch {
+        sqliteDb = new DatabaseSync(":memory:");
+        initSchema(sqliteDb);
+        migrateSchema(sqliteDb);
+      }
     }
-
-    initSchema(sqliteDb);
-    migrateSchema(sqliteDb);
   }
   return sqliteDb;
 }
@@ -86,6 +99,69 @@ function migrateSchema(db: any) {
     if (hasCreatorId && hasCreatedById) {
       db.exec(`UPDATE correspondence SET created_by_id = creator_id WHERE created_by_id IS NULL AND creator_id IS NOT NULL`);
     }
+
+    // Check if reference_number or content have NOT NULL constraints in SQLite
+    const refCol = cols.find((c: any) => c.name.toLowerCase() === "reference_number");
+    const contentCol = cols.find((c: any) => c.name.toLowerCase() === "content");
+    if ((refCol && refCol.notnull === 1) || (contentCol && contentCol.notnull === 1)) {
+      db.exec("PRAGMA foreign_keys = OFF;");
+      db.exec(`
+        CREATE TABLE correspondence_temp_fix (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT NOT NULL,
+          reference_number TEXT,
+          external_ref_number TEXT,
+          external_date TEXT,
+          subject TEXT NOT NULL,
+          content TEXT,
+          sender_department_id INTEGER,
+          receiver_department_id INTEGER,
+          current_department_id INTEGER,
+          created_by_id INTEGER,
+          assigned_to_id INTEGER,
+          send_to_all INTEGER DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'draft',
+          priority TEXT NOT NULL DEFAULT 'medium',
+          confidentiality TEXT NOT NULL DEFAULT 'normal',
+          central_mail_assigned_by_id INTEGER,
+          flow_template_id INTEGER,
+          flow_template_group_id INTEGER,
+          parent_correspondence_id INTEGER,
+          contributing_department_ids TEXT,
+          contribution_routing_batch_id TEXT,
+          margin_notes TEXT,
+          notes TEXT,
+          issued_at TEXT,
+          issued_by_id INTEGER,
+          requires_reply INTEGER DEFAULT 0,
+          reminder_date TEXT,
+          follow_up_days INTEGER DEFAULT 0,
+          closed_at TEXT,
+          closed_by_id INTEGER,
+          is_deleted INTEGER DEFAULT 0,
+          deleted_at TEXT,
+          deleted_by_id INTEGER,
+          delete_reason TEXT,
+          deletion_reason TEXT,
+          is_archived INTEGER DEFAULT 0,
+          archived_at TEXT,
+          reply_to_correspondence_id INTEGER,
+          is_final_reply INTEGER DEFAULT 0,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      const tempCols = db.prepare(`PRAGMA table_info(correspondence_temp_fix)`).all() as any[];
+      const existingColNames = new Set(cols.map((c: any) => c.name.toLowerCase()));
+      const commonCols = tempCols.map((c: any) => c.name).filter((name: string) => existingColNames.has(name.toLowerCase()));
+      const colList = commonCols.join(", ");
+
+      db.exec(`INSERT INTO correspondence_temp_fix (${colList}) SELECT ${colList} FROM correspondence;`);
+      db.exec("DROP TABLE correspondence;");
+      db.exec("ALTER TABLE correspondence_temp_fix RENAME TO correspondence;");
+      db.exec("PRAGMA foreign_keys = ON;");
+    }
   } catch {}
 
   // Migrate flow_templates
@@ -106,6 +182,19 @@ function migrateSchema(db: any) {
   addColumnIfNotExists(db, "employees", "last_login_at", "TEXT");
   addColumnIfNotExists(db, "employees", "last_login_ip", "TEXT");
   addColumnIfNotExists(db, "employees", "last_login_location", "TEXT");
+
+  // Migrate leave_requests (ensure leave_type column exists and sync from type if needed)
+  addColumnIfNotExists(db, "leave_requests", "leave_type", "TEXT");
+  addColumnIfNotExists(db, "leave_requests", "notes", "TEXT");
+  addColumnIfNotExists(db, "leave_requests", "updated_at", "TEXT DEFAULT CURRENT_TIMESTAMP");
+  try {
+    const leaveCols = db.prepare(`PRAGMA table_info(leave_requests)`).all() as any[];
+    const hasTypeCol = leaveCols.some((c: any) => c.name === "type");
+    const hasLeaveTypeCol = leaveCols.some((c: any) => c.name === "leave_type");
+    if (hasTypeCol && hasLeaveTypeCol) {
+      db.exec(`UPDATE leave_requests SET leave_type = type WHERE leave_type IS NULL AND type IS NOT NULL`);
+    }
+  } catch {}
 
   // Clean up removed service_requests table
   try {
@@ -142,20 +231,23 @@ function initSchema(db: DatabaseSync) {
       full_name TEXT NOT NULL DEFAULT 'موظف',
       department_id INTEGER,
       job_title TEXT,
-      role TEXT NOT NULL DEFAULT 'employee',
-      signature_url TEXT,
-      company_number TEXT,
-      landline_phone TEXT,
+      employee_number TEXT UNIQUE,
+      phone TEXT,
       mobile_phone TEXT,
+      landline_phone TEXT,
+      company_number TEXT,
       email TEXT,
+      role TEXT NOT NULL DEFAULT 'employee',
       is_active INTEGER DEFAULT 1,
-      must_change_password INTEGER DEFAULT 0,
-      can_access_correspondence INTEGER DEFAULT 1,
-      can_access_leave_requests INTEGER DEFAULT 1,
-      can_receive_external_incoming INTEGER DEFAULT 0,
+      leave_balance INTEGER DEFAULT 30,
       last_login_at TEXT,
       last_login_ip TEXT,
       last_login_location TEXT,
+      must_change_password INTEGER DEFAULT 1,
+      signature_url TEXT,
+      can_access_correspondence INTEGER DEFAULT 1,
+      can_access_leave_requests INTEGER DEFAULT 1,
+      can_receive_external_incoming INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -181,41 +273,55 @@ function initSchema(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS system_settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       key TEXT NOT NULL UNIQUE,
-      value TEXT NOT NULL,
+      value TEXT,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_by_id INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS correspondence (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reference_number TEXT,
       type TEXT NOT NULL,
-      reference_number TEXT NOT NULL,
-      external_ref_number TEXT,
       subject TEXT NOT NULL,
-      content TEXT NOT NULL,
+      content TEXT,
+      status TEXT DEFAULT 'draft',
+      priority TEXT DEFAULT 'medium',
+      confidentiality TEXT DEFAULT 'normal',
       sender_department_id INTEGER,
       receiver_department_id INTEGER,
+      created_by_id INTEGER,
+      assigned_to_id INTEGER,
       current_department_id INTEGER,
+      send_to_all INTEGER DEFAULT 0,
       external_entity TEXT,
-      status TEXT NOT NULL DEFAULT 'draft',
-      priority TEXT NOT NULL DEFAULT 'medium',
-      confidentiality TEXT NOT NULL DEFAULT 'normal',
-      is_delegated INTEGER DEFAULT 0,
-      delegated_to_id INTEGER,
-      creator_id INTEGER,
+      external_ref_number TEXT,
+      external_date TEXT,
+      central_mail_assigned_by_id INTEGER,
+      flow_template_id INTEGER,
+      flow_template_group_id INTEGER,
+      parent_correspondence_id INTEGER,
+      contributing_department_ids TEXT,
+      contribution_routing_batch_id TEXT,
+      margin_notes TEXT,
+      notes TEXT,
+      issued_at TEXT,
+      issued_by_id INTEGER,
       requires_reply INTEGER DEFAULT 0,
       reminder_date TEXT,
+      follow_up_days INTEGER,
       closed_at TEXT,
       closed_by_id INTEGER,
-      central_mail_assigned_by_id INTEGER,
       is_deleted INTEGER DEFAULT 0,
       deleted_at TEXT,
       deleted_by_id INTEGER,
+      delete_reason TEXT,
       deletion_reason TEXT,
       is_archived INTEGER DEFAULT 0,
-      parent_correspondence_id INTEGER,
+      archived_at TEXT,
       reply_to_correspondence_id INTEGER,
       is_final_reply INTEGER DEFAULT 0,
+      is_delegated INTEGER DEFAULT 0,
+      delegated_to_id INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -223,14 +329,19 @@ function initSchema(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS correspondence_assignments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       correspondence_id INTEGER NOT NULL,
-      department_id INTEGER,
+      department_id INTEGER NOT NULL,
       employee_id INTEGER,
       assigned_by_id INTEGER,
-      action_required TEXT,
+      is_lead INTEGER DEFAULT 0,
       is_follow_up INTEGER DEFAULT 0,
-      response_deadline TEXT,
+      follow_up_days INTEGER,
+      action_required TEXT,
+      notes TEXT,
       status TEXT DEFAULT 'pending',
+      response_deadline TEXT,
       completed_at TEXT,
+      routing_batch_id TEXT,
+      is_active_batch INTEGER DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -239,6 +350,7 @@ function initSchema(db: DatabaseSync) {
       correspondence_id INTEGER NOT NULL,
       department_id INTEGER NOT NULL,
       reason TEXT,
+      is_automatic INTEGER DEFAULT 0,
       is_hidden INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -247,10 +359,13 @@ function initSchema(db: DatabaseSync) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       correspondence_id INTEGER NOT NULL,
       file_name TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      file_size INTEGER NOT NULL,
+      original_name TEXT,
       mime_type TEXT NOT NULL,
-      uploaded_by_id INTEGER,
+      file_size INTEGER NOT NULL,
+      description TEXT,
+      file_path TEXT,
+      uploaded_by_id INTEGER NOT NULL,
+      contribution_id INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -261,9 +376,9 @@ function initSchema(db: DatabaseSync) {
       action TEXT NOT NULL,
       performed_by_id INTEGER,
       employee_id INTEGER,
+      ip_address TEXT,
       module TEXT,
       details TEXT,
-      ip_address TEXT,
       user_agent TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -272,29 +387,37 @@ function initSchema(db: DatabaseSync) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       correspondence_id INTEGER NOT NULL,
       action TEXT NOT NULL,
+      from_status TEXT,
+      to_status TEXT,
+      performed_by_id INTEGER NOT NULL,
       from_department_id INTEGER,
       to_department_id INTEGER,
-      performed_by_id INTEGER,
-      notes TEXT,
+      margin_note TEXT,
+      signature INTEGER DEFAULT 1,
       signature_url TEXT,
+      notes TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS leave_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_id INTEGER NOT NULL,
-      type TEXT NOT NULL,
+      leave_type TEXT NOT NULL,
+      type TEXT,
       start_date TEXT NOT NULL,
       end_date TEXT NOT NULL,
-      days_count INTEGER NOT NULL,
+      days_count INTEGER,
       reason TEXT,
       status TEXT DEFAULT 'pending',
       approved_by_id INTEGER,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS password_reset_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER,
       username TEXT NOT NULL,
       employee_name TEXT NOT NULL,
       company_number TEXT,
@@ -304,6 +427,7 @@ function initSchema(db: DatabaseSync) {
       temp_password TEXT,
       processed_by_id INTEGER,
       processed_at TEXT,
+      notes TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -323,7 +447,8 @@ function initSchema(db: DatabaseSync) {
       notification_id INTEGER NOT NULL,
       employee_id INTEGER NOT NULL,
       is_read INTEGER DEFAULT 0,
-      read_at TEXT
+      read_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS external_entities (
@@ -346,6 +471,7 @@ function initSchema(db: DatabaseSync) {
       correspondence_type TEXT NOT NULL,
       levels TEXT NOT NULL,
       is_active INTEGER DEFAULT 1,
+      created_by_id INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -361,6 +487,7 @@ function initSchema(db: DatabaseSync) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       correspondence_id INTEGER NOT NULL,
       requested_by_id INTEGER NOT NULL,
+      requested_department_id INTEGER,
       reason TEXT NOT NULL,
       status TEXT DEFAULT 'pending',
       admin_notes TEXT,
@@ -380,11 +507,16 @@ function initSchema(db: DatabaseSync) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       correspondence_id INTEGER NOT NULL,
       routing_batch_id TEXT NOT NULL,
-      department_id INTEGER NOT NULL,
-      contributor_id INTEGER NOT NULL,
-      content TEXT,
+      contributing_department_id INTEGER,
+      lead_department_id INTEGER,
+      department_id INTEGER,
+      contributor_id INTEGER,
+      submitted_by_id INTEGER,
+      is_lead INTEGER DEFAULT 0,
       status TEXT DEFAULT 'pending',
+      content TEXT,
       decline_reason TEXT,
+      submitted_at TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -393,6 +525,7 @@ function initSchema(db: DatabaseSync) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       correspondence_id INTEGER NOT NULL,
       employee_id INTEGER NOT NULL,
+      follow_up_days INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 

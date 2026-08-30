@@ -3,8 +3,27 @@ import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import createMemoryStore from "memorystore";
 import crypto from "crypto";
+import { storage } from "../../storage";
+import { userActivityMiddleware, recordUserActivity } from "../../userActivity";
 
-const TOKEN_SECRET = process.env.SESSION_SECRET || "e-management-session-secret-key-2024";
+function resolveTokenSecret(): string {
+  const envSecret = process.env.SESSION_SECRET;
+  if (envSecret && envSecret.trim().length > 0) {
+    return envSecret.trim();
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("CRITICAL SECURITY ERROR: SESSION_SECRET environment variable is mandatory in production!");
+  }
+
+  const generatedDevSecret = crypto.randomBytes(32).toString("hex");
+  console.warn(
+    "[SECURITY WARNING] No SESSION_SECRET was provided in environment. Generated a temporary random secret for this session. (All tokens will invalidate upon server restart)."
+  );
+  return generatedDevSecret;
+}
+
+const TOKEN_SECRET = resolveTokenSecret();
 
 export function generateAuthToken(employeeId: number, username: string): string {
   const payload = JSON.stringify({
@@ -63,7 +82,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: sessionTtl,
     },
@@ -74,7 +93,8 @@ export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
 
-  // Token-based authentication middleware (supports Authorization: Bearer, X-Auth-Token, and ?token=)
+  // Token-based authentication middleware: Only accepts Authorization: Bearer or X-Auth-Token headers
+  // (?token= is strictly rejected to prevent leak in server logs, history & referrers)
   app.use((req, _res, next) => {
     let token: string | undefined;
 
@@ -83,8 +103,6 @@ export async function setupAuth(app: Express) {
       token = authHeader.slice(7).trim();
     } else if (req.headers["x-auth-token"]) {
       token = req.headers["x-auth-token"] as string;
-    } else if (typeof req.query.token === "string") {
-      token = req.query.token;
     }
 
     if (token) {
@@ -101,6 +119,9 @@ export async function setupAuth(app: Express) {
 
     next();
   });
+
+  // Track activity for any authenticated request
+  app.use(userActivityMiddleware);
 }
 
 export const isAuthenticated: RequestHandler = (req, res, next) => {
@@ -109,8 +130,42 @@ export const isAuthenticated: RequestHandler = (req, res, next) => {
     if (req.session) {
       (req.session as any).employeeId = employeeId;
     }
+    const xForwardedFor = req.headers["x-forwarded-for"] as string;
+    const clientIp =
+      (req.headers["x-real-ip"] as string) ||
+      (req.headers["cf-connecting-ip"] as string) ||
+      (xForwardedFor ? xForwardedFor.split(",")[0].trim() : null) ||
+      req.socket?.remoteAddress ||
+      undefined;
+    recordUserActivity(Number(employeeId), clientIp, req.path);
     return next();
   }
   return res.status(401).json({ message: "Unauthorized" });
 };
+
+/**
+ * Middleware that enforces mandatory password change if mustChangePassword is true.
+ * Blocks all API endpoints with 403 Forbidden except auth management.
+ */
+export const requirePasswordChanged: RequestHandler = async (req, res, next) => {
+  const employeeId = (req as any).employeeId || (req.session && (req.session as any).employeeId);
+  if (!employeeId) {
+    return next();
+  }
+
+  try {
+    const employee = await storage.getEmployee(employeeId);
+    if (employee && employee.mustChangePassword) {
+      return res.status(403).json({
+        message: "يجب تغيير كلمة المرور للمتابعة قبل استخدام النظام",
+        mustChangePassword: true,
+      });
+    }
+  } catch (err) {
+    console.error("Error checking mustChangePassword status:", err);
+  }
+
+  next();
+};
+
 

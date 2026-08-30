@@ -246,6 +246,9 @@ export default function RichTextEditor({
   const [imageUrl, setImageUrl] = useState("");
   const [tableMenu, setTableMenu] = useState<TableMenuState | null>(null);
 
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
   const toolbarId = useMemo(() => `rte-toolbar-${++toolbarCounter}`, []);
 
   const captureSelection = useCallback(() => {
@@ -276,17 +279,24 @@ export default function RichTextEditor({
 
   const insertAtCursor = (html: string) => {
     const editor = editorRef.current;
-    if (!editor) return;
+    if (!editor || !editor.root) return;
     const range = restoreSelectionForInsertion();
-    editor.clipboard.dangerouslyPasteHTML(range.index, html, "user");
-    editor.setSelection(range.index + 1, 0);
-    onChange(editor.root.innerHTML);
+    try {
+      editor.clipboard.dangerouslyPasteHTML(range.index, html, "user");
+      editor.setSelection(range.index + 1, 0);
+    } catch {
+      if (editor.root) {
+        editor.root.innerHTML += html;
+      }
+    }
+    const currentHtml = editor.root?.innerHTML || "";
+    onChangeRef.current?.(currentHtml === "<p><br></p>" ? "" : currentHtml);
   };
 
   const callTableAction = useCallback(
     (action: TableActionValue): boolean => {
       const editor = editorRef.current;
-      if (!editor) return false;
+      if (!editor || !editor.root) return false;
 
       if (tableModuleRegistration.state !== "ok") {
         toast({
@@ -322,10 +332,11 @@ export default function RichTextEditor({
 
       // Most table operations mutate the DOM via Parchment but don't always
       // emit a text-change event that react-quill would forward — sync html.
-      onChange(editor.root.innerHTML);
+      const currentHtml = editor.root?.innerHTML || "";
+      onChangeRef.current?.(currentHtml === "<p><br></p>" ? "" : currentHtml);
       return true;
     },
-    [onChange, toast]
+    [toast]
   );
 
   const modules = useMemo(
@@ -597,72 +608,102 @@ export default function RichTextEditor({
 
   // Initialize Quill editor directly on mount
   useEffect(() => {
-    if (!editorContainerRef.current) return;
+    const container = editorContainerRef.current;
+    if (!container) return;
     const editorDiv = document.createElement("div");
-    editorContainerRef.current.innerHTML = "";
-    editorContainerRef.current.appendChild(editorDiv);
+    container.innerHTML = "";
+    container.appendChild(editorDiv);
 
-    const quill = new Quill(editorDiv, {
-      theme: "snow",
-      modules,
-      placeholder: placeholder || "",
-    });
+    let quill: QuillType;
+    try {
+      quill = new Quill(editorDiv, {
+        theme: "snow",
+        modules,
+        placeholder: placeholder || "",
+      });
+    } catch (err) {
+      console.error("Failed to initialize Quill editor", err);
+      return;
+    }
+
     editorRef.current = quill;
 
-    if (value) {
+    if (value && quill.root) {
       isInternalChangeRef.current = true;
-      quill.clipboard.dangerouslyPasteHTML(0, value, "silent");
+      try {
+        quill.clipboard.dangerouslyPasteHTML(0, value, "silent");
+      } catch {
+        if (quill.root) {
+          quill.root.innerHTML = value;
+        }
+      }
       isInternalChangeRef.current = false;
     }
 
     const handleTextChange = () => {
       if (isInternalChangeRef.current) return;
-      const html = quill.root.innerHTML;
+      if (!quill || !quill.root) return;
+      const html = quill.root.innerHTML || "";
       const cleanHtml = html === "<p><br></p>" ? "" : html;
-      onChange(cleanHtml);
+      onChangeRef.current?.(cleanHtml);
     };
 
     quill.on("text-change", handleTextChange);
 
     const root = quill.root;
-    const contextMenuHandler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const cell = target.closest("td, th") as HTMLTableCellElement | null;
-      if (!cell || !root.contains(cell)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const menuW = 260;
-      const menuH = 480;
-      const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
-      const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
-      focusCellAtPoint(cell, e.clientX, e.clientY);
-      setTableMenu({ x: Math.max(8, x), y: Math.max(8, y) });
-    };
-    root.addEventListener("contextmenu", contextMenuHandler);
+    let contextMenuHandler: ((e: MouseEvent) => void) | null = null;
+    if (root) {
+      contextMenuHandler = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        const cell = target.closest("td, th") as HTMLTableCellElement | null;
+        if (!cell || !root.contains(cell)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const menuW = 260;
+        const menuH = 480;
+        const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
+        const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+        focusCellAtPoint(cell, e.clientX, e.clientY);
+        setTableMenu({ x: Math.max(8, x), y: Math.max(8, y) });
+      };
+      root.addEventListener("contextmenu", contextMenuHandler);
+    }
 
     return () => {
-      quill.off("text-change", handleTextChange);
-      root.removeEventListener("contextmenu", contextMenuHandler);
+      try {
+        quill.off("text-change", handleTextChange);
+      } catch {}
+      if (root && contextMenuHandler) {
+        try {
+          root.removeEventListener("contextmenu", contextMenuHandler);
+        } catch {}
+      }
       editorRef.current = null;
-      if (editorContainerRef.current) {
-        editorContainerRef.current.innerHTML = "";
+      if (container) {
+        container.innerHTML = "";
       }
     };
-  }, [modules, placeholder, onChange, focusCellAtPoint]);
+  }, []);
 
   // Sync external value updates
   useEffect(() => {
     const quill = editorRef.current;
-    if (!quill) return;
-    const currentHtml = quill.root.innerHTML;
+    if (!quill || !quill.root) return;
+    const currentHtml = quill.root.innerHTML || "";
     const cleanCurrent = currentHtml === "<p><br></p>" ? "" : currentHtml;
     const cleanValue = value === "<p><br></p>" ? "" : (value || "");
     if (cleanValue !== cleanCurrent) {
       isInternalChangeRef.current = true;
       const sel = quill.getSelection();
-      quill.root.innerHTML = cleanValue;
+      try {
+        quill.root.innerHTML = cleanValue;
+      } catch (err) {
+        console.warn("Failed to set Quill HTML", err);
+      }
       if (sel) {
-        quill.setSelection(sel.index, sel.length, "silent");
+        try {
+          quill.setSelection(sel.index, sel.length, "silent");
+        } catch {}
       }
       isInternalChangeRef.current = false;
     }

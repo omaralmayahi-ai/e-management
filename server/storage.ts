@@ -111,8 +111,9 @@ export interface IStorage {
 
   getLeaveRequests(): Promise<LeaveRequest[]>;
   getLeaveRequestsByEmployee(employeeId: number): Promise<LeaveRequest[]>;
+  getLeaveRequest(id: number): Promise<LeaveRequest | undefined>;
   createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest>;
-  updateLeaveRequestStatus(id: number, status: string, approvedById?: number): Promise<LeaveRequest | undefined>;
+  updateLeaveRequestStatus(id: number, status: string, approvedById?: number, notes?: string): Promise<LeaveRequest | undefined>;
 
   getPasswordResetRequests(): Promise<PasswordResetRequest[]>;
   getPasswordResetRequest(id: number): Promise<PasswordResetRequest | undefined>;
@@ -637,14 +638,20 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(leaveRequests.createdAt));
   }
 
+  async getLeaveRequest(id: number): Promise<LeaveRequest | undefined> {
+    const [item] = await db.select().from(leaveRequests).where(eq(leaveRequests.id, id));
+    return item;
+  }
+
   async createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest> {
     const [item] = await db.insert(leaveRequests).values(data).returning();
     return item;
   }
 
-  async updateLeaveRequestStatus(id: number, status: string, approvedById?: number): Promise<LeaveRequest | undefined> {
+  async updateLeaveRequestStatus(id: number, status: string, approvedById?: number, notes?: string): Promise<LeaveRequest | undefined> {
     const updates: any = { status: status as any, updatedAt: new Date() };
-    if (approvedById) updates.approvedById = approvedById;
+    if (approvedById !== undefined) updates.approvedById = approvedById;
+    if (notes !== undefined) updates.notes = notes;
     const [item] = await db.update(leaveRequests)
       .set(updates)
       .where(eq(leaveRequests.id, id))

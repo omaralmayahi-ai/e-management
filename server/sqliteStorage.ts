@@ -177,9 +177,10 @@ function mapSystemSetting(row: any): SystemSetting {
 }
 
 export class SqliteStorage implements IStorage {
-  private db = getSqliteDb();
+  private db: any;
 
-  constructor() {
+  constructor(customDb?: any) {
+    this.db = customDb || getSqliteDb();
     this.seedDefaultDataIfNeeded();
   }
 
@@ -1317,6 +1318,25 @@ export class SqliteStorage implements IStorage {
     }));
   }
 
+  async getLeaveRequest(id: number): Promise<LeaveRequest | undefined> {
+    const r = this.db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id) as any;
+    if (!r) return undefined;
+    return {
+      id: r.id,
+      employeeId: r.employee_id,
+      leaveType: r.leave_type || r.type,
+      startDate: r.start_date ? new Date(r.start_date) : new Date(),
+      endDate: r.end_date ? new Date(r.end_date) : new Date(),
+      daysCount: r.days_count,
+      reason: r.reason,
+      status: r.status,
+      approvedById: r.approved_by_id,
+      notes: r.notes ?? null,
+      createdAt: r.created_at ? new Date(r.created_at) : new Date(),
+      updatedAt: r.updated_at ? new Date(r.updated_at) : new Date(),
+    };
+  }
+
   async createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest> {
     const stmt = this.db.prepare(`
       INSERT INTO leave_requests (employee_id, leave_type, start_date, end_date, days_count, reason, status, approved_by_id, notes)
@@ -1350,9 +1370,14 @@ export class SqliteStorage implements IStorage {
     };
   }
 
-  async updateLeaveRequestStatus(id: number, status: string, approvedById?: number): Promise<LeaveRequest | undefined> {
-    const stmt = this.db.prepare("UPDATE leave_requests SET status = ?, approved_by_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *");
-    const row = stmt.get(status, approvedById || null, id) as any;
+  async updateLeaveRequestStatus(id: number, status: string, approvedById?: number, notes?: string): Promise<LeaveRequest | undefined> {
+    const stmt = this.db.prepare(`
+      UPDATE leave_requests
+      SET status = ?, approved_by_id = COALESCE(?, approved_by_id), notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+      RETURNING *
+    `);
+    const row = stmt.get(status, approvedById || null, notes !== undefined ? notes : null, id) as any;
     if (!row) return undefined;
     return {
       id: row.id,

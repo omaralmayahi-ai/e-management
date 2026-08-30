@@ -257,8 +257,12 @@ export default function Dashboard() {
     };
   }, [corrs, me?.departmentId]);
 
+  const isOfficer = me?.role === "officer";
   const pendingLeaves = leaveRequests?.filter(l => l.status === "pending").length || 0;
   const myLeaves = leaveRequests?.filter(l => (l as any).employeeId === me?.id).length || 0;
+  const leaveCardTitle = isAdmin ? "طلبات الإجازة (الكل)" : isOfficer ? "طلبات إجازة القسم" : "طلبات الإجازة";
+  const leaveCardSubtitle = (isAdmin || isOfficer) ? "طلب قيد الانتظار" : "إجمالي طلباتي";
+  const leaveCardValue = (isAdmin || isOfficer) ? pendingLeaves : myLeaves;
 
   const centralMailItems = isCentralMail ? corrs.filter(c => c.type === "external_incoming" && c.centralMailAssignedById === me?.id) : [];
   const cmTotalEntered = centralMailItems.length;
@@ -470,7 +474,7 @@ export default function Dashboard() {
 
       <div className="grid sm:grid-cols-2 gap-4">
         {showLeave && (
-          <StatCard icon={CalendarDays} title="طلبات الإجازة" value={isAdmin ? pendingLeaves : myLeaves} subtitle={isAdmin ? "طلب قيد الانتظار" : "إجمالي طلباتي"} color="bg-chart-5/10 text-chart-5" testId="stat-leaves" />
+          <StatCard icon={CalendarDays} title={leaveCardTitle} value={leaveCardValue} subtitle={leaveCardSubtitle} color="bg-chart-5/10 text-chart-5" testId="stat-leaves" />
         )}
       </div>
 

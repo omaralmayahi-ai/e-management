@@ -2,6 +2,7 @@ import type { Express } from "express";
 import bcrypt from "bcryptjs";
 import { storage } from "../../storage";
 import { generateAuthToken } from "./replitAuth";
+import { recordUserActivity, clearUserActivity } from "../../userActivity";
 
 export function registerAuthRoutes(app: Express): void {
   app.post("/api/auth/login", async (req, res) => {
@@ -50,6 +51,7 @@ export function registerAuthRoutes(app: Express): void {
 
       (req.session as any).employeeId = employee.id;
       (req as any).employeeId = employee.id;
+      recordUserActivity(employee.id, clientIp, "/api/auth/login");
 
       await storage.createAuditLog({
         entityType: "auth",
@@ -94,6 +96,10 @@ export function registerAuthRoutes(app: Express): void {
   });
 
   app.post("/api/auth/logout", (req, res) => {
+    const employeeId = (req as any).employeeId || (req.session as any)?.employeeId;
+    if (employeeId) {
+      clearUserActivity(Number(employeeId));
+    }
     if (req.session) {
       req.session.destroy((err) => {
         if (err) {
@@ -138,7 +144,7 @@ export function registerAuthRoutes(app: Express): void {
   });
 
   app.post("/api/auth/change-password", async (req, res) => {
-    const employeeId = (req.session as any)?.employeeId;
+    const employeeId = (req as any).employeeId || (req.session as any)?.employeeId;
     if (!employeeId) return res.status(401).json({ message: "Unauthorized" });
 
     const { currentPassword, newPassword } = req.body;
